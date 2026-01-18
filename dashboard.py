@@ -940,8 +940,8 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in pending_posts %}
-                <div class="card pending" data-type="post" data-id="{{ post.id }}">
-                    <div class="card-content">{{ post.content[:160] }}{% if post.content|length > 160 %}...{% endif %}</div>
+                <div class="card pending" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content }}">
+                    <div class="card-content">{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot pending"></span>{{ post.scheduled_time.strftime('%b %d') if post.scheduled_time else 'Draft' }}</span>
                         <span class="char-count {{ 'char-ok' if post.content|length <= 250 else 'char-warn' if post.content|length <= 280 else 'char-over' }}">{{ post.content|length }}/280</span>
@@ -960,8 +960,8 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in approved_posts %}
-                <div class="card approved" data-type="post" data-id="{{ post.id }}">
-                    <div class="card-content">{{ post.content[:160] }}{% if post.content|length > 160 %}...{% endif %}</div>
+                <div class="card approved" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content }}">
+                    <div class="card-content">{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot approved"></span>{{ post.scheduled_time.strftime('%b %d') if post.scheduled_time else 'Ready' }}</span>
                         <span class="char-count {{ 'char-ok' if post.content|length <= 250 else 'char-warn' if post.content|length <= 280 else 'char-over' }}">{{ post.content|length }}/280</span>
@@ -980,8 +980,8 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in posted_posts %}
-                <div class="card posted" data-type="post" data-id="{{ post.id }}">
-                    <div class="card-content">{{ post.content[:100] }}...</div>
+                <div class="card posted" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content }}">
+                    <div class="card-content">{{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot posted"></span>{{ post.posted_time.strftime('%b %d') if post.posted_time else 'Done' }}</span>
                     </div>
@@ -1104,9 +1104,9 @@ DASHBOARD_TEMPLATE = """
     (function() {
         'use strict';
 
-        // Smooth drag-drop with spring physics
+        // Smooth drag-drop with frame-rate independent lerp
         const DRAG_THRESHOLD = 5;
-        const LERP_SPEED = 0.18;
+        const SMOOTHING = 0.12;
 
         let drag = null;
         let ghost = null;
@@ -1114,7 +1114,7 @@ DASHBOARD_TEMPLATE = """
         let ghostPos = { x: 0, y: 0 };
         let targetPos = { x: 0, y: 0 };
         let animationId = null;
-        let lastTime = 0;
+        let lastFrameTime = 0;
 
         // Modal functions
         function closeModal() {
@@ -1123,14 +1123,19 @@ DASHBOARD_TEMPLATE = """
 
         function openModal(card) {
             const type = card.dataset.type;
-            const content = card.querySelector('.card-content').textContent;
             const status = card.classList.contains('posted') ? 'posted' :
                            card.classList.contains('approved') ? 'approved' :
                            card.classList.contains('pending') ? 'pending' : 'quote';
 
-            let displayContent = content;
-            if (type === 'quote') {
-                displayContent = content + '\\n\\nTrack your edge.\\n\\n#EdgeOfICT #ICTTrading';
+            // Use full content from data attribute for posts, card content for quotes
+            let displayContent;
+            if (type === 'post' && card.dataset.fullContent) {
+                displayContent = card.dataset.fullContent;
+            } else if (type === 'quote') {
+                const quoteText = card.querySelector('.card-content').textContent;
+                displayContent = quoteText + '\\n\\nTrack your edge.\\n\\n#EdgeOfICT #ICTTrading';
+            } else {
+                displayContent = card.querySelector('.card-content').textContent;
             }
 
             const formatted = displayContent.replace(/#(\\w+)/g, '<span class="x-hashtag">#$1</span>');
@@ -1164,16 +1169,25 @@ DASHBOARD_TEMPLATE = """
             setTimeout(() => t.className = 'toast', 2500);
         }
 
-        // Animation loop for smooth ghost movement using lerp
+        // Animation loop for buttery smooth 60fps ghost movement
         function animateGhost(timestamp) {
             if (!ghost) return;
 
-            // Smooth lerp for buttery movement
-            ghostPos.x += (targetPos.x - ghostPos.x) * LERP_SPEED;
-            ghostPos.y += (targetPos.y - ghostPos.y) * LERP_SPEED;
+            // Frame-rate independent smoothing
+            const deltaTime = lastFrameTime ? (timestamp - lastFrameTime) / 16.667 : 1;
+            lastFrameTime = timestamp;
 
-            // Apply transform with slight rotation for visual flair
-            ghost.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.03) rotate(1deg)`;
+            // Exponential smoothing for natural deceleration
+            const factor = 1 - Math.pow(1 - SMOOTHING, deltaTime);
+            ghostPos.x += (targetPos.x - ghostPos.x) * factor;
+            ghostPos.y += (targetPos.y - ghostPos.y) * factor;
+
+            // Calculate velocity for dynamic rotation
+            const velX = targetPos.x - ghostPos.x;
+            const rotation = Math.max(-3, Math.min(3, velX * 0.02));
+
+            // Apply transform with subtle dynamic rotation
+            ghost.style.transform = `translate3d(${Math.round(ghostPos.x * 10) / 10}px, ${Math.round(ghostPos.y * 10) / 10}px, 0) scale(1.02) rotate(${rotation.toFixed(1)}deg)`;
 
             animationId = requestAnimationFrame(animateGhost);
         }
@@ -1193,14 +1207,14 @@ DASHBOARD_TEMPLATE = """
             ghostPos.y = rect.top;
             targetPos.x = rect.left;
             targetPos.y = rect.top;
+            lastFrameTime = 0;
 
             // Set initial transform
-            el.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.03) rotate(1deg)`;
+            el.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.02) rotate(0deg)`;
 
-            // Fade in
+            // Fade in smoothly
             requestAnimationFrame(() => {
                 el.classList.add('visible');
-                // Start animation loop
                 animationId = requestAnimationFrame(animateGhost);
             });
 
@@ -1247,6 +1261,7 @@ DASHBOARD_TEMPLATE = """
                 cancelAnimationFrame(animationId);
                 animationId = null;
             }
+            lastFrameTime = 0;
 
             if (drag && drag.card) {
                 drag.card.classList.remove('is-dragging');
@@ -1262,26 +1277,29 @@ DASHBOARD_TEMPLATE = """
                         placeholder.remove();
                     }
                     placeholder = null;
-                }, 150);
+                }, 120);
             }
 
             if (ghost) {
                 if (animate && dropTarget) {
-                    // Animate to drop target then fade
+                    // Smooth snap to drop zone
                     const targetRect = dropTarget.getBoundingClientRect();
-                    ghost.style.transition = 'transform 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.15s ease 0.1s';
-                    ghost.style.transform = `translate3d(${targetRect.left}px, ${targetRect.top}px, 0) scale(0.98) rotate(0deg)`;
+                    ghost.style.transition = 'transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.12s ease 0.06s';
+                    ghost.style.transform = `translate3d(${targetRect.left + 8}px, ${targetRect.top + 8}px, 0) scale(0.96) rotate(0deg)`;
                     ghost.style.opacity = '0';
                     setTimeout(() => {
                         if (ghost) ghost.remove();
                         ghost = null;
-                    }, 250);
+                    }, 200);
                 } else if (animate) {
-                    ghost.classList.add('dropping');
+                    // Snap back animation
+                    ghost.style.transition = 'transform 0.15s ease-out, opacity 0.1s ease';
+                    ghost.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(0.95) rotate(0deg)`;
+                    ghost.style.opacity = '0';
                     setTimeout(() => {
                         if (ghost) ghost.remove();
                         ghost = null;
-                    }, 200);
+                    }, 150);
                 } else {
                     ghost.remove();
                     ghost = null;
