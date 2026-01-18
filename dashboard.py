@@ -171,7 +171,7 @@ DASHBOARD_TEMPLATE = """
             position: fixed;
             pointer-events: none;
             z-index: 10000;
-            will-change: transform;
+            will-change: transform, opacity;
             border-radius: 10px;
             background: var(--bg-card);
             border: 2px solid var(--accent-cyan);
@@ -179,19 +179,16 @@ DASHBOARD_TEMPLATE = """
                         0 0 0 1px rgba(0, 212, 255, 0.3),
                         0 0 40px rgba(0, 212, 255, 0.15);
             opacity: 0;
-            transform: scale(0.95) rotate(0deg);
-            transition: opacity 0.15s ease, transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+            transition: opacity 0.2s ease, box-shadow 0.2s ease;
         }
 
         .drag-ghost.visible {
             opacity: 1;
-            transform: scale(1.02) rotate(1.5deg);
         }
 
         .drag-ghost.dropping {
-            transition: all 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
             opacity: 0;
-            transform: scale(0.9) rotate(0deg);
+            transition: opacity 0.2s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         .card-content {
@@ -1108,17 +1105,16 @@ DASHBOARD_TEMPLATE = """
         'use strict';
 
         // Smooth drag-drop with spring physics
-        const DRAG_THRESHOLD = 6;
-        const SPRING_TENSION = 0.15;
-        const SPRING_DAMPING = 0.75;
+        const DRAG_THRESHOLD = 5;
+        const LERP_SPEED = 0.18;
 
         let drag = null;
         let ghost = null;
         let placeholder = null;
         let ghostPos = { x: 0, y: 0 };
-        let ghostVel = { x: 0, y: 0 };
         let targetPos = { x: 0, y: 0 };
         let animationId = null;
+        let lastTime = 0;
 
         // Modal functions
         function closeModal() {
@@ -1168,23 +1164,16 @@ DASHBOARD_TEMPLATE = """
             setTimeout(() => t.className = 'toast', 2500);
         }
 
-        // Animation loop for smooth ghost movement
-        function animateGhost() {
+        // Animation loop for smooth ghost movement using lerp
+        function animateGhost(timestamp) {
             if (!ghost) return;
 
-            // Spring physics for smooth following
-            const dx = targetPos.x - ghostPos.x;
-            const dy = targetPos.y - ghostPos.y;
+            // Smooth lerp for buttery movement
+            ghostPos.x += (targetPos.x - ghostPos.x) * LERP_SPEED;
+            ghostPos.y += (targetPos.y - ghostPos.y) * LERP_SPEED;
 
-            ghostVel.x += dx * SPRING_TENSION;
-            ghostVel.y += dy * SPRING_TENSION;
-            ghostVel.x *= SPRING_DAMPING;
-            ghostVel.y *= SPRING_DAMPING;
-
-            ghostPos.x += ghostVel.x;
-            ghostPos.y += ghostVel.y;
-
-            ghost.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.02) rotate(1.5deg)`;
+            // Apply transform with slight rotation for visual flair
+            ghost.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.03) rotate(1deg)`;
 
             animationId = requestAnimationFrame(animateGhost);
         }
@@ -1199,23 +1188,21 @@ DASHBOARD_TEMPLATE = """
             el.style.padding = getComputedStyle(card).padding;
             document.body.appendChild(el);
 
-            // Initialize position
+            // Initialize position at card's current location
             ghostPos.x = rect.left;
             ghostPos.y = rect.top;
-            ghostVel.x = 0;
-            ghostVel.y = 0;
             targetPos.x = rect.left;
             targetPos.y = rect.top;
 
-            el.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(0.95)`;
+            // Set initial transform
+            el.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.03) rotate(1deg)`;
 
-            // Start visible with animation
+            // Fade in
             requestAnimationFrame(() => {
                 el.classList.add('visible');
+                // Start animation loop
+                animationId = requestAnimationFrame(animateGhost);
             });
-
-            // Start animation loop
-            animationId = requestAnimationFrame(animateGhost);
 
             return el;
         }
@@ -1255,7 +1242,7 @@ DASHBOARD_TEMPLATE = """
             });
         }
 
-        function cleanup(animate = true) {
+        function cleanup(animate = true, dropTarget = null) {
             if (animationId) {
                 cancelAnimationFrame(animationId);
                 animationId = null;
@@ -1275,17 +1262,26 @@ DASHBOARD_TEMPLATE = """
                         placeholder.remove();
                     }
                     placeholder = null;
-                }, 200);
+                }, 150);
             }
 
             if (ghost) {
-                if (animate) {
-                    ghost.classList.add('dropping');
-                    ghost.classList.remove('visible');
+                if (animate && dropTarget) {
+                    // Animate to drop target then fade
+                    const targetRect = dropTarget.getBoundingClientRect();
+                    ghost.style.transition = 'transform 0.2s cubic-bezier(0.2, 0, 0, 1), opacity 0.15s ease 0.1s';
+                    ghost.style.transform = `translate3d(${targetRect.left}px, ${targetRect.top}px, 0) scale(0.98) rotate(0deg)`;
+                    ghost.style.opacity = '0';
                     setTimeout(() => {
                         if (ghost) ghost.remove();
                         ghost = null;
                     }, 250);
+                } else if (animate) {
+                    ghost.classList.add('dropping');
+                    setTimeout(() => {
+                        if (ghost) ghost.remove();
+                        ghost = null;
+                    }, 200);
                 } else {
                     ghost.remove();
                     ghost = null;
@@ -1300,10 +1296,10 @@ DASHBOARD_TEMPLATE = """
             const target = document.elementFromPoint(x, y);
             const colBody = target ? target.closest('.column-body') : null;
 
-            if (!colBody || !drag) return false;
+            if (!colBody || !drag) return { success: false, target: null };
 
             const targetStatus = colBody.closest('.column').dataset.status;
-            if (targetStatus === 'quotes') return false;
+            if (targetStatus === 'quotes') return { success: false, target: null };
 
             try {
                 let response;
@@ -1323,15 +1319,15 @@ DASHBOARD_TEMPLATE = """
 
                 if (response.ok) {
                     showToast(drag.type === 'quote' ? 'Post created!' : 'Moved to ' + targetStatus);
-                    setTimeout(() => location.reload(), 350);
-                    return true;
+                    setTimeout(() => location.reload(), 300);
+                    return { success: true, target: colBody };
                 } else {
                     showToast('Failed to move', true);
-                    return false;
+                    return { success: false, target: null };
                 }
             } catch (err) {
                 showToast('Error', true);
-                return false;
+                return { success: false, target: null };
             }
         }
 
@@ -1404,8 +1400,8 @@ DASHBOARD_TEMPLATE = """
             const wasDragging = drag.isDragging;
 
             if (wasDragging) {
-                const success = await handleDrop(e.clientX, e.clientY);
-                cleanup(true);
+                const result = await handleDrop(e.clientX, e.clientY);
+                cleanup(true, result.target);
             } else {
                 openModal(drag.card);
                 cleanup(false);
