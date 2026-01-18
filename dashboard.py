@@ -940,7 +940,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in pending_posts %}
-                <div class="card pending" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content }}">
+                <div class="card pending" data-type="post" data-id="{{ post.id }}">
                     <div class="card-content">{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot pending"></span>{{ post.scheduled_time.strftime('%b %d') if post.scheduled_time else 'Draft' }}</span>
@@ -960,7 +960,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in approved_posts %}
-                <div class="card approved" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content }}">
+                <div class="card approved" data-type="post" data-id="{{ post.id }}">
                     <div class="card-content">{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot approved"></span>{{ post.scheduled_time.strftime('%b %d') if post.scheduled_time else 'Ready' }}</span>
@@ -980,7 +980,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in posted_posts %}
-                <div class="card posted" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content }}">
+                <div class="card posted" data-type="post" data-id="{{ post.id }}">
                     <div class="card-content">{{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot posted"></span>{{ post.posted_time.strftime('%b %d') if post.posted_time else 'Done' }}</span>
@@ -1101,6 +1101,16 @@ DASHBOARD_TEMPLATE = """
     </div>
 
     <script>
+    // Store full content for posts (avoids HTML escaping issues in attributes)
+    const POST_CONTENT = {
+        {% for post in pending_posts %}'{{ post.id }}': {{ post.content | tojson }},
+        {% endfor %}
+        {% for post in approved_posts %}'{{ post.id }}': {{ post.content | tojson }},
+        {% endfor %}
+        {% for post in posted_posts %}'{{ post.id }}': {{ post.content | tojson }},
+        {% endfor %}
+    };
+
     (function() {
         'use strict';
 
@@ -1123,14 +1133,15 @@ DASHBOARD_TEMPLATE = """
 
         function openModal(card) {
             const type = card.dataset.type;
+            const cardId = card.dataset.id;
             const status = card.classList.contains('posted') ? 'posted' :
                            card.classList.contains('approved') ? 'approved' :
                            card.classList.contains('pending') ? 'pending' : 'quote';
 
-            // Use full content from data attribute for posts, card content for quotes
+            // Use POST_CONTENT for posts (properly JSON encoded), card content for quotes
             let displayContent;
-            if (type === 'post' && card.dataset.fullContent) {
-                displayContent = card.dataset.fullContent;
+            if (type === 'post' && POST_CONTENT[cardId]) {
+                displayContent = POST_CONTENT[cardId];
             } else if (type === 'quote') {
                 const quoteText = card.querySelector('.card-content').textContent;
                 displayContent = quoteText + '\\n\\nTrack your edge.\\n\\n#EdgeOfICT #ICTTrading';
@@ -1316,37 +1327,90 @@ DASHBOARD_TEMPLATE = """
 
             if (!colBody || !drag) return { success: false, target: null };
 
-            const targetStatus = colBody.closest('.column').dataset.status;
+            const targetCol = colBody.closest('.column');
+            const targetStatus = targetCol.dataset.status;
             if (targetStatus === 'quotes') return { success: false, target: null };
 
+            const sourceCol = drag.card.closest('.column');
+
             try {
-                let response;
+                let response, data;
                 if (drag.type === 'quote') {
                     response = await fetch('/api/quote/to-post', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({quote_id: drag.id, status: targetStatus})
                     });
+                    data = await response.json();
                 } else {
                     response = await fetch('/api/post/status', {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
                         body: JSON.stringify({post_id: drag.id, status: targetStatus})
                     });
+                    data = await response.json();
                 }
 
                 if (response.ok) {
-                    showToast(drag.type === 'quote' ? 'Post created!' : 'Moved to ' + targetStatus);
-                    setTimeout(() => location.reload(), 300);
+                    // Seamless DOM update - no page reload!
+                    if (drag.type === 'quote') {
+                        // Quote converted to post - remove from quotes, will appear on next refresh
+                        // For now just remove the card smoothly
+                        drag.card.style.transition = 'opacity 0.2s, transform 0.2s';
+                        drag.card.style.opacity = '0';
+                        drag.card.style.transform = 'scale(0.9)';
+                        setTimeout(() => drag.card.remove(), 200);
+                        showToast('Post created!');
+                        // Store the new post content
+                        if (data.post_id && data.content) {
+                            POST_CONTENT[data.post_id] = data.content;
+                        }
+                        // Reload after a moment to show the new post in the right column
+                        setTimeout(() => location.reload(), 400);
+                    } else {
+                        // Move existing post card to new column
+                        drag.card.classList.remove('pending', 'approved', 'posted');
+                        drag.card.classList.add(targetStatus);
+
+                        // Update status dot
+                        const statusDot = drag.card.querySelector('.status-dot');
+                        if (statusDot) {
+                            statusDot.classList.remove('pending', 'approved', 'posted');
+                            statusDot.classList.add(targetStatus);
+                        }
+
+                        // Animate card to new position
+                        drag.card.style.transition = 'none';
+                        drag.card.style.opacity = '0';
+                        colBody.appendChild(drag.card);
+
+                        requestAnimationFrame(() => {
+                            drag.card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
+                            drag.card.style.opacity = '1';
+                            drag.card.style.transform = 'translateY(0)';
+                        });
+
+                        // Update column counts
+                        updateColumnCount(sourceCol);
+                        updateColumnCount(targetCol);
+
+                        showToast('Moved to ' + targetStatus);
+                    }
                     return { success: true, target: colBody };
                 } else {
                     showToast('Failed to move', true);
                     return { success: false, target: null };
                 }
             } catch (err) {
-                showToast('Error', true);
+                showToast('Error: ' + err.message, true);
                 return { success: false, target: null };
             }
+        }
+
+        function updateColumnCount(col) {
+            const count = col.querySelectorAll('.card').length;
+            const countEl = col.querySelector('.column-count');
+            if (countEl) countEl.textContent = count;
         }
 
         // Pointer events
@@ -1769,7 +1833,7 @@ def quote_to_post():
     session.add(post)
     session.commit()
 
-    return jsonify({'success': True, 'post_id': post.id})
+    return jsonify({'success': True, 'post_id': post.id, 'content': content})
 
 
 @app.route('/api/extract-quotes', methods=['POST'])
