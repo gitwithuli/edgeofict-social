@@ -1801,6 +1801,19 @@ def extract_quotes_from_upload():
         return jsonify({'error': f'Extraction failed: {str(e)}'}), 500
 
 
+def ensure_db_seeded():
+    """Seed sample data if database is empty."""
+    init_db()
+    session = get_session()
+    if session.query(Quote).count() == 0:
+        from seed_sample_data import seed_quotes, seed_posts
+        seed_quotes()
+        seed_posts()
+        print("Database seeded with sample data")
+
+# Seed on import for production (gunicorn)
+ensure_db_seeded()
+
 if __name__ == '__main__':
     print("\n  EdgeOfICT Kanban: http://localhost:5001\n")
     app.run(debug=True, port=5001)
