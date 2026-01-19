@@ -1153,7 +1153,7 @@ DASHBOARD_TEMPLATE = """
             } else {
                 // Quote - get full content and format as post preview
                 const quoteText = getFullContent(card) || card.querySelector('.card-content').textContent.replace(/^"|"$/g, '');
-                content = '"' + quoteText + '"\n\nTrack your edge.\n\n#EdgeOfICT #ICTTrading';
+                content = '"' + quoteText + '"\\n\\nTrack your edge.\\n\\n#EdgeOfICT #ICTTrading';
             }
 
             // Format content with styled hashtags
