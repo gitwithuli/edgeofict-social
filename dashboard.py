@@ -1343,7 +1343,7 @@ DASHBOARD_TEMPLATE = """
                             <button class="btn-share instagram" onclick="openInstagram()">📷 Instagram</button>
                             <button class="btn-share bluesky" onclick="postToBluesky()">🦋 Bluesky</button>
                             <button class="btn-share linkedin" onclick="openLinkedIn()">💼 LinkedIn</button>
-                            <button class="btn-share facebook" onclick="openFacebook()">📘 Facebook</button>
+                            <button class="btn-share facebook" onclick="postToFacebook()">📘 Facebook</button>
                         </div>
                     </div>
                 </div>
@@ -2028,10 +2028,40 @@ DASHBOARD_TEMPLATE = """
         downloadImage();
     }
 
-    function openFacebook() {
-        window.open('https://www.facebook.com/', '_blank');
-        showToast('Image downloaded. Share it on Facebook.');
-        downloadImage();
+    async function postToFacebook() {
+        const btn = document.querySelector('.btn-share.facebook');
+        btn.disabled = true;
+        btn.textContent = 'Posting...';
+
+        try {
+            const resp = await fetch('/api/post/facebook', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content: imgGenState.content})
+            });
+
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                btn.textContent = '✓ Posted!';
+                btn.style.background = '#22c55e';
+                btn.style.color = '#fff';
+                showToast('Posted to Facebook!');
+
+                setTimeout(() => {
+                    btn.textContent = '📘 Facebook';
+                    btn.style.background = '';
+                    btn.style.color = '';
+                    btn.disabled = false;
+                }, 3000);
+            } else {
+                throw new Error(data.error || 'Failed to post');
+            }
+        } catch (err) {
+            btn.textContent = '📘 Facebook';
+            btn.disabled = false;
+            showToast(err.message || 'Failed to post to Facebook', true);
+        }
     }
 
     function postToBluesky() {
@@ -2486,6 +2516,56 @@ def verify_twitter():
         if not client.is_configured():
             return jsonify({'configured': False, 'error': 'Twitter API not configured'})
 
+        result = client.verify_credentials()
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'configured': False, 'error': str(e)})
+
+
+@app.route('/api/post/facebook', methods=['POST'])
+def post_to_facebook():
+    """Post content to Facebook Page."""
+    data = request.json
+    post_id = data.get('post_id')
+    content = data.get('content')
+
+    if not post_id and not content:
+        return jsonify({'error': 'Missing post_id or content'}), 400
+
+    try:
+        from integrations.facebook_client import FacebookClient
+        client = FacebookClient()
+
+        if not client.is_configured():
+            return jsonify({'error': 'Facebook API not configured'}), 500
+
+        # Get content from post if post_id provided
+        if post_id:
+            session = get_session()
+            post = session.query(Post).filter(Post.id == post_id).first()
+            if not post:
+                return jsonify({'error': 'Post not found'}), 404
+            content = post.content
+
+        result = client.post_text(content)
+
+        return jsonify({
+            'success': True,
+            'post_id': result.get('post_id'),
+            'url': result.get('url')
+        })
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to post: {str(e)}'}), 500
+
+
+@app.route('/api/facebook/verify', methods=['GET'])
+def verify_facebook():
+    """Verify Facebook Page credentials."""
+    try:
+        from integrations.facebook_client import FacebookClient
+        client = FacebookClient()
         result = client.verify_credentials()
         return jsonify(result)
 
