@@ -2573,6 +2573,48 @@ def verify_facebook():
         return jsonify({'configured': False, 'error': str(e)})
 
 
+@app.route('/api/post/instagram', methods=['POST'])
+def post_to_instagram():
+    """Post image to Instagram."""
+    data = request.json
+    image_url = data.get('image_url')
+    caption = data.get('caption', '')
+
+    if not image_url:
+        return jsonify({'error': 'Missing image_url (must be publicly accessible)'}), 400
+
+    try:
+        from integrations.instagram_client import InstagramClient
+        client = InstagramClient()
+
+        if not client.is_configured():
+            return jsonify({'error': 'Instagram API not configured'}), 500
+
+        result = client.post_image(image_url, caption)
+
+        return jsonify({
+            'success': True,
+            'post_id': result.get('post_id'),
+            'url': result.get('url')
+        })
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to post: {str(e)}'}), 500
+
+
+@app.route('/api/instagram/verify', methods=['GET'])
+def verify_instagram():
+    """Verify Instagram connection."""
+    try:
+        from integrations.instagram_client import InstagramClient
+        client = InstagramClient()
+        result = client.verify_credentials()
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'configured': False, 'error': str(e)})
+
+
 def ensure_db_seeded():
     """Seed sample data if database is empty."""
     init_db()
