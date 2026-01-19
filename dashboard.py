@@ -2447,13 +2447,34 @@ DASHBOARD_TEMPLATE = """
         }
 
         btn.disabled = true;
-        btn.textContent = 'Posting...';
+        btn.textContent = 'Generating...';
 
         try {
+            const canvas = await generateTweetCanvas(content);
+            const imageData = canvas.toDataURL('image/png');
+
+            btn.textContent = 'Uploading...';
+
+            const uploadResp = await fetch('/api/cloudinary/upload', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({image: imageData})
+            });
+
+            const uploadData = await uploadResp.json();
+            if (!uploadResp.ok || !uploadData.secure_url) {
+                throw new Error(uploadData.error || 'Failed to upload image');
+            }
+
+            btn.textContent = 'Posting...';
+
             const resp = await fetch('/api/post/facebook', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({content: content})
+                body: JSON.stringify({
+                    content: content,
+                    image_url: uploadData.secure_url
+                })
             });
 
             const data = await resp.json();
@@ -2461,7 +2482,7 @@ DASHBOARD_TEMPLATE = """
             if (resp.ok && data.success) {
                 btn.textContent = '✓ Posted!';
                 btn.style.background = '#22c55e';
-                showToast('Posted to Facebook!');
+                showToast('Posted to Facebook with image!');
 
                 setTimeout(() => {
                     btn.textContent = '📘 Facebook';
