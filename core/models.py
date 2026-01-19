@@ -76,7 +76,8 @@ def get_engine(db_url=None):
         turso_token = os.getenv('TURSO_AUTH_TOKEN')
 
         if turso_url and turso_token:
-            db_url = f"sqlite+{turso_url}/?authToken={turso_token}&secure=true"
+            # sqlalchemy-libsql format: sqlite+libsql://host?authToken=token&secure=true
+            db_url = f"sqlite+{turso_url}?authToken={turso_token}&secure=true"
         else:
             db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'quotes.db')
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
