@@ -160,11 +160,12 @@ DASHBOARD_TEMPLATE = """
         .card:active { cursor: grabbing; }
 
         .card.is-dragging {
-            opacity: 0.35;
-            transform: scale(0.98);
+            opacity: 0.4;
+            transform: scale(0.97);
             border-style: dashed;
-            border-color: var(--accent-blue);
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            border-color: var(--accent-cyan);
+            background: rgba(0, 212, 255, 0.03);
+            transition: opacity 0.15s ease, transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
         }
 
         .drag-ghost {
@@ -179,18 +180,19 @@ DASHBOARD_TEMPLATE = """
                         0 0 0 1px rgba(0, 212, 255, 0.3),
                         0 0 40px rgba(0, 212, 255, 0.15);
             opacity: 0;
-            /* No transform transition during drag - handled by rAF */
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            transform-style: preserve-3d;
         }
 
         .drag-ghost.visible {
             opacity: 1;
-            transition: opacity 0.15s ease-out;
+            transition: opacity 0.12s ease-out;
         }
 
         .drag-ghost.dropping {
             opacity: 0;
-            /* Enable smooth transition for drop animation */
-            transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease-out;
+            transition: transform 0.28s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.22s ease-out;
         }
 
         .card-content {
@@ -942,7 +944,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for quote in fresh_quotes %}
-                <div class="card" data-type="quote" data-id="{{ quote.id }}" data-source="{{ quote.source }}" data-full-content="{{ quote.content | e }}">
+                <div class="card" data-type="quote" data-id="{{ quote.id }}" data-source="{{ quote.source }}" data-full-content='{{ quote.content | tojson | safe }}'>
                     <div class="card-content">"{{ quote.content }}"</div>
                     <div class="card-meta">
                         <span class="tag tag-topic">{{ quote.topic }}</span>
@@ -963,7 +965,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in pending_posts %}
-                <div class="card pending" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content | e }}">
+                <div class="card pending" data-type="post" data-id="{{ post.id }}" data-full-content='{{ post.content | tojson | safe }}'>
                     <div class="card-content">{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot pending"></span>{{ post.scheduled_time.strftime('%b %d') if post.scheduled_time else 'Draft' }}</span>
@@ -983,7 +985,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in approved_posts %}
-                <div class="card approved" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content | e }}">
+                <div class="card approved" data-type="post" data-id="{{ post.id }}" data-full-content='{{ post.content | tojson | safe }}'>
                     <div class="card-content">{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot approved"></span>{{ post.scheduled_time.strftime('%b %d') if post.scheduled_time else 'Ready' }}</span>
@@ -1003,7 +1005,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in posted_posts %}
-                <div class="card posted" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content | e }}">
+                <div class="card posted" data-type="post" data-id="{{ post.id }}" data-full-content='{{ post.content | tojson | safe }}'>
                     <div class="card-content">{{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot posted"></span>{{ post.posted_time.strftime('%b %d') if post.posted_time else 'Done' }}</span>
@@ -1135,7 +1137,9 @@ DASHBOARD_TEMPLATE = """
         let ghostEl = null;
         let ghostPos = { x: 0, y: 0 };
         let targetPos = { x: 0, y: 0 };
+        let velocity = { x: 0, y: 0 };
         let animationId = null;
+        let lastFrameTime = 0;
 
         function showToast(msg, isError) {
             const t = document.getElementById('toast');
@@ -1148,14 +1152,19 @@ DASHBOARD_TEMPLATE = """
             document.getElementById('modal').classList.remove('show');
         }
 
-        // Get full content from data attribute (HTML decoded)
+        // Get full content from data attribute (JSON encoded)
         function getFullContent(card) {
             const fullContent = card.dataset.fullContent;
             if (fullContent) {
-                // Decode HTML entities
-                const txt = document.createElement('textarea');
-                txt.innerHTML = fullContent;
-                return txt.value;
+                try {
+                    // Content is JSON-encoded, parse it
+                    return JSON.parse(fullContent);
+                } catch (e) {
+                    // Fallback: decode HTML entities
+                    const txt = document.createElement('textarea');
+                    txt.innerHTML = fullContent;
+                    return txt.value;
+                }
             }
             return null;
         }
@@ -1181,7 +1190,7 @@ DASHBOARD_TEMPLATE = """
             }
 
             // Format content with styled hashtags
-            const formattedContent = content.replace(/#(\w+)/g, '<span class="x-hashtag">#$1</span>');
+            const formattedContent = content.replace(/#(\\w+)/g, '<span class="x-hashtag">#$1</span>');
             document.getElementById('modal-content').innerHTML = formattedContent;
             document.getElementById('modal-chars').textContent = content.length + '/280';
             document.getElementById('modal-chars').className = 'x-char-count ' + (content.length <= 250 ? 'char-ok' : content.length <= 280 ? 'char-warn' : 'char-over');
@@ -1230,23 +1239,38 @@ DASHBOARD_TEMPLATE = """
 
         document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
 
-        // Smooth animation loop using requestAnimationFrame
-        function animateGhost() {
+        // Buttery smooth 60fps animation with spring physics
+        function animateGhost(timestamp) {
             if (!ghostEl || !dragState?.dragging) {
                 animationId = null;
                 return;
             }
 
-            // Lerp interpolation for buttery smooth movement
-            const lerpFactor = 0.2;
-            ghostPos.x += (targetPos.x - ghostPos.x) * lerpFactor;
-            ghostPos.y += (targetPos.y - ghostPos.y) * lerpFactor;
+            // Time-based interpolation for consistent speed across refresh rates
+            const dt = lastFrameTime ? Math.min((timestamp - lastFrameTime) / 16.67, 2) : 1;
+            lastFrameTime = timestamp;
 
-            // Calculate slight rotation based on horizontal velocity
-            const velocityX = targetPos.x - ghostPos.x;
-            const rotation = Math.max(-2, Math.min(2, velocityX * 0.03));
+            // Spring-damper physics for natural feel
+            const stiffness = 0.35;
+            const damping = 0.85;
 
-            ghostEl.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.02) rotate(${rotation}deg)`;
+            // Calculate spring force
+            const dx = targetPos.x - ghostPos.x;
+            const dy = targetPos.y - ghostPos.y;
+
+            // Update velocity with spring force and damping
+            velocity.x = (velocity.x + dx * stiffness * dt) * damping;
+            velocity.y = (velocity.y + dy * stiffness * dt) * damping;
+
+            // Update position
+            ghostPos.x += velocity.x * dt;
+            ghostPos.y += velocity.y * dt;
+
+            // Smooth rotation based on horizontal velocity
+            const rotation = Math.max(-3, Math.min(3, velocity.x * 0.08));
+
+            // Use transform3d for GPU compositing
+            ghostEl.style.transform = `translate3d(${Math.round(ghostPos.x * 10) / 10}px, ${Math.round(ghostPos.y * 10) / 10}px, 0) scale(1.03) rotate(${rotation.toFixed(2)}deg)`;
 
             animationId = requestAnimationFrame(animateGhost);
         }
@@ -1255,9 +1279,11 @@ DASHBOARD_TEMPLATE = """
             const card = e.target.closest('.card');
             if (!card || e.button !== 0 || e.target.closest('.modal-overlay') || e.target.closest('.upload-modal')) return;
             e.preventDefault();
+            card.setPointerCapture(e.pointerId);
             const rect = card.getBoundingClientRect();
             dragState = {
                 card,
+                pointerId: e.pointerId,
                 type: card.dataset.type,
                 id: card.dataset.id,
                 startX: e.clientX,
@@ -1266,6 +1292,10 @@ DASHBOARD_TEMPLATE = """
                 offY: e.clientY - rect.top,
                 dragging: false
             };
+            // Reset animation state
+            velocity.x = 0;
+            velocity.y = 0;
+            lastFrameTime = 0;
         }, {passive: false});
 
         document.addEventListener('pointermove', e => {
@@ -1281,22 +1311,25 @@ DASHBOARD_TEMPLATE = """
                 const rect = dragState.card.getBoundingClientRect();
                 ghostEl = dragState.card.cloneNode(true);
                 ghostEl.className = 'card drag-ghost';
-                ghostEl.style.cssText = `width:${rect.width}px;left:0;top:0;`;
+                ghostEl.style.cssText = `width:${rect.width}px;left:0;top:0;pointer-events:none;`;
 
-                // Initialize positions
-                ghostPos.x = rect.left;
-                ghostPos.y = rect.top;
-                targetPos.x = rect.left;
-                targetPos.y = rect.top;
+                // Start ghost at current cursor position for immediate feedback
+                const startX = e.clientX - dragState.offX;
+                const startY = e.clientY - dragState.offY;
+                ghostPos.x = startX;
+                ghostPos.y = startY;
+                targetPos.x = startX;
+                targetPos.y = startY;
 
-                ghostEl.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.02)`;
+                ghostEl.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.03)`;
                 document.body.appendChild(ghostEl);
 
-                // Fade in ghost
-                requestAnimationFrame(() => ghostEl.classList.add('visible'));
-
-                // Start animation loop
-                if (!animationId) animationId = requestAnimationFrame(animateGhost);
+                // Fade in ghost immediately
+                requestAnimationFrame(() => {
+                    ghostEl.classList.add('visible');
+                    // Start animation loop
+                    if (!animationId) animationId = requestAnimationFrame(animateGhost);
+                });
             }
 
             if (!dragState.dragging) return;
@@ -1305,9 +1338,12 @@ DASHBOARD_TEMPLATE = """
             targetPos.x = e.clientX - dragState.offX;
             targetPos.y = e.clientY - dragState.offY;
 
-            // Highlight drop target
+            // Highlight drop target (use ghostEl position to avoid flickering)
             document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
+            // Temporarily hide ghost to get element under cursor
+            if (ghostEl) ghostEl.style.visibility = 'hidden';
             const el = document.elementFromPoint(e.clientX, e.clientY);
+            if (ghostEl) ghostEl.style.visibility = '';
             const col = el?.closest('.column');
             if (col && col.dataset.status !== 'quotes') col.classList.add('drag-over');
         });
@@ -1316,6 +1352,11 @@ DASHBOARD_TEMPLATE = """
             if (!dragState) return;
             const wasDragging = dragState.dragging;
             const card = dragState.card;
+
+            // Release pointer capture
+            if (dragState.pointerId) {
+                try { card.releasePointerCapture(dragState.pointerId); } catch(e) {}
+            }
 
             // Stop animation loop
             if (animationId) {
@@ -1334,23 +1375,29 @@ DASHBOARD_TEMPLATE = """
                 return;
             }
 
-            // Handle drop
+            // Handle drop - temporarily hide ghost to find element under cursor
+            if (ghostEl) ghostEl.style.visibility = 'hidden';
             const dropEl = document.elementFromPoint(e.clientX, e.clientY);
+            if (ghostEl) ghostEl.style.visibility = '';
             const targetCol = dropEl?.closest('.column');
             const targetBody = targetCol?.querySelector('.column-body');
             const targetStatus = targetCol?.dataset.status;
 
-            // Remove ghost with animation
+            // Animate ghost to drop position
             if (ghostEl) {
                 ghostEl.classList.add('dropping');
+                let dropX, dropY;
                 if (targetCol && targetStatus !== 'quotes') {
                     const targetRect = targetBody.getBoundingClientRect();
-                    ghostEl.style.transform = `translate3d(${targetRect.left + 8}px, ${targetRect.top + 8}px, 0) scale(0.95)`;
+                    dropX = targetRect.left + 8;
+                    dropY = targetRect.top + 8;
                 } else {
                     const cardRect = card.getBoundingClientRect();
-                    ghostEl.style.transform = `translate3d(${cardRect.left}px, ${cardRect.top}px, 0) scale(1)`;
+                    dropX = cardRect.left;
+                    dropY = cardRect.top;
                 }
-                setTimeout(() => { if (ghostEl) { ghostEl.remove(); ghostEl = null; } }, 200);
+                ghostEl.style.transform = `translate3d(${dropX}px, ${dropY}px, 0) scale(0.98)`;
+                setTimeout(() => { if (ghostEl) { ghostEl.remove(); ghostEl = null; } }, 250);
             }
 
             if (!targetCol || targetStatus === 'quotes') {
