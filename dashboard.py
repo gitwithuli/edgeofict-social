@@ -179,16 +179,18 @@ DASHBOARD_TEMPLATE = """
                         0 0 0 1px rgba(0, 212, 255, 0.3),
                         0 0 40px rgba(0, 212, 255, 0.15);
             opacity: 0;
-            transition: opacity 0.2s ease, box-shadow 0.2s ease;
+            /* No transform transition during drag - handled by rAF */
         }
 
         .drag-ghost.visible {
             opacity: 1;
+            transition: opacity 0.15s ease-out;
         }
 
         .drag-ghost.dropping {
             opacity: 0;
-            transition: opacity 0.2s ease, transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+            /* Enable smooth transition for drop animation */
+            transition: transform 0.25s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease-out;
         }
 
         .card-content {
@@ -919,7 +921,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for quote in fresh_quotes %}
-                <div class="card" data-type="quote" data-id="{{ quote.id }}" data-source="{{ quote.source }}">
+                <div class="card" data-type="quote" data-id="{{ quote.id }}" data-source="{{ quote.source }}" data-full-content="{{ quote.content | e }}">
                     <div class="card-content">"{{ quote.content }}"</div>
                     <div class="card-meta">
                         <span class="tag tag-topic">{{ quote.topic }}</span>
@@ -940,7 +942,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in pending_posts %}
-                <div class="card pending" data-type="post" data-id="{{ post.id }}">
+                <div class="card pending" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content | e }}">
                     <div class="card-content">{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot pending"></span>{{ post.scheduled_time.strftime('%b %d') if post.scheduled_time else 'Draft' }}</span>
@@ -960,7 +962,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in approved_posts %}
-                <div class="card approved" data-type="post" data-id="{{ post.id }}">
+                <div class="card approved" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content | e }}">
                     <div class="card-content">{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot approved"></span>{{ post.scheduled_time.strftime('%b %d') if post.scheduled_time else 'Ready' }}</span>
@@ -980,7 +982,7 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="column-body">
                 {% for post in posted_posts %}
-                <div class="card posted" data-type="post" data-id="{{ post.id }}">
+                <div class="card posted" data-type="post" data-id="{{ post.id }}" data-full-content="{{ post.content | e }}">
                     <div class="card-content">{{ post.content[:100] }}{% if post.content|length > 100 %}...{% endif %}</div>
                     <div class="card-meta post-meta">
                         <span><span class="status-dot posted"></span>{{ post.posted_time.strftime('%b %d') if post.posted_time else 'Done' }}</span>
@@ -1101,77 +1103,15 @@ DASHBOARD_TEMPLATE = """
     </div>
 
     <script>
-    // Store full content for posts (avoids HTML escaping issues in attributes)
-    const POST_CONTENT = {
-        {% for post in pending_posts %}'{{ post.id }}': {{ post.content | tojson }},
-        {% endfor %}
-        {% for post in approved_posts %}'{{ post.id }}': {{ post.content | tojson }},
-        {% endfor %}
-        {% for post in posted_posts %}'{{ post.id }}': {{ post.content | tojson }},
-        {% endfor %}
-    };
-
     (function() {
         'use strict';
 
-        // Smooth drag-drop with frame-rate independent lerp
-        const DRAG_THRESHOLD = 5;
-        const SMOOTHING = 0.12;
-
-        let drag = null;
-        let ghost = null;
-        let placeholder = null;
+        // Drag state
+        let dragState = null;
+        let ghostEl = null;
         let ghostPos = { x: 0, y: 0 };
         let targetPos = { x: 0, y: 0 };
         let animationId = null;
-        let lastFrameTime = 0;
-
-        // Modal functions
-        function closeModal() {
-            document.getElementById('modal').classList.remove('show');
-        }
-
-        function openModal(card) {
-            const type = card.dataset.type;
-            const cardId = card.dataset.id;
-            const status = card.classList.contains('posted') ? 'posted' :
-                           card.classList.contains('approved') ? 'approved' :
-                           card.classList.contains('pending') ? 'pending' : 'quote';
-
-            // Use POST_CONTENT for posts (properly JSON encoded), card content for quotes
-            let displayContent;
-            if (type === 'post' && POST_CONTENT[cardId]) {
-                displayContent = POST_CONTENT[cardId];
-            } else if (type === 'quote') {
-                const quoteText = card.querySelector('.card-content').textContent;
-                displayContent = quoteText + '\\n\\nTrack your edge.\\n\\n#EdgeOfICT #ICTTrading';
-            } else {
-                displayContent = card.querySelector('.card-content').textContent;
-            }
-
-            const formatted = displayContent.replace(/#(\\w+)/g, '<span class="x-hashtag">#$1</span>');
-            document.getElementById('modal-content').innerHTML = formatted;
-            document.getElementById('modal-chars').textContent = displayContent.length + '/280';
-            document.getElementById('modal-chars').className = 'x-char-count ' +
-                (displayContent.length <= 250 ? 'char-ok' : displayContent.length <= 280 ? 'char-warn' : 'char-over');
-
-            const statusEl = document.getElementById('modal-status');
-            statusEl.className = 'status-label ' + status;
-            const icons = { quote: '📝 Quote', pending: '⏳ Pending', approved: '✓ Approved', posted: '✓ Posted' };
-            statusEl.innerHTML = '<span class="status-dot ' + status + '"></span>' + icons[status];
-
-            const sourceTag = card.querySelector('.tag-source');
-            document.getElementById('modal-source').textContent = sourceTag ? sourceTag.textContent : '';
-
-            const now = new Date();
-            document.getElementById('modal-time').textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) + ' · ' + now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-
-            document.getElementById('modal').classList.add('show');
-        }
-
-        document.getElementById('modal').addEventListener('click', function(e) {
-            if (e.target === this) closeModal();
-        });
 
         function showToast(msg, isError) {
             const t = document.getElementById('toast');
@@ -1180,330 +1120,302 @@ DASHBOARD_TEMPLATE = """
             setTimeout(() => t.className = 'toast', 2500);
         }
 
-        // Animation loop for buttery smooth 60fps ghost movement
-        function animateGhost(timestamp) {
-            if (!ghost) return;
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+        }
 
-            // Frame-rate independent smoothing
-            const deltaTime = lastFrameTime ? (timestamp - lastFrameTime) / 16.667 : 1;
-            lastFrameTime = timestamp;
+        // Get full content from data attribute (HTML decoded)
+        function getFullContent(card) {
+            const fullContent = card.dataset.fullContent;
+            if (fullContent) {
+                // Decode HTML entities
+                const txt = document.createElement('textarea');
+                txt.innerHTML = fullContent;
+                return txt.value;
+            }
+            return null;
+        }
 
-            // Exponential smoothing for natural deceleration
-            const factor = 1 - Math.pow(1 - SMOOTHING, deltaTime);
-            ghostPos.x += (targetPos.x - ghostPos.x) * factor;
-            ghostPos.y += (targetPos.y - ghostPos.y) * factor;
+        function openModal(card) {
+            const type = card.dataset.type;
+            const status = card.classList.contains('posted') ? 'posted' :
+                           card.classList.contains('approved') ? 'approved' :
+                           card.classList.contains('pending') ? 'pending' : 'quote';
 
-            // Calculate velocity for dynamic rotation
-            const velX = targetPos.x - ghostPos.x;
-            const rotation = Math.max(-3, Math.min(3, velX * 0.02));
+            let content;
+            if (type === 'post') {
+                // Get full content from data attribute
+                content = getFullContent(card);
+                if (!content) {
+                    // Fallback to card text (shouldn't happen but just in case)
+                    content = card.querySelector('.card-content').textContent;
+                }
+            } else {
+                // Quote - get full content and format as post preview
+                const quoteText = getFullContent(card) || card.querySelector('.card-content').textContent.replace(/^"|"$/g, '');
+                content = '"' + quoteText + '"\n\nTrack your edge.\n\n#EdgeOfICT #ICTTrading';
+            }
 
-            // Apply transform with subtle dynamic rotation
-            ghost.style.transform = `translate3d(${Math.round(ghostPos.x * 10) / 10}px, ${Math.round(ghostPos.y * 10) / 10}px, 0) scale(1.02) rotate(${rotation.toFixed(1)}deg)`;
+            // Format content with styled hashtags
+            const formattedContent = content.replace(/#(\w+)/g, '<span class="x-hashtag">#$1</span>');
+            document.getElementById('modal-content').innerHTML = formattedContent;
+            document.getElementById('modal-chars').textContent = content.length + '/280';
+            document.getElementById('modal-chars').className = 'x-char-count ' + (content.length <= 250 ? 'char-ok' : content.length <= 280 ? 'char-warn' : 'char-over');
+
+            const statusEl = document.getElementById('modal-status');
+            statusEl.className = 'status-label ' + status;
+            statusEl.innerHTML = '<span class="status-dot ' + status + '"></span>' + {quote:'📝 Quote', pending:'⏳ Pending', approved:'✓ Approved', posted:'✓ Posted'}[status];
+
+            document.getElementById('modal-source').textContent = card.querySelector('.tag-source')?.textContent || '';
+            document.getElementById('modal-time').textContent = new Date().toLocaleString('en-US', {hour:'numeric', minute:'2-digit', month:'short', day:'numeric', year:'numeric'});
+            document.getElementById('modal').classList.add('show');
+        }
+
+        // Create a new post card element
+        function createPostCard(postId, content, status) {
+            const card = document.createElement('div');
+            card.className = 'card ' + status;
+            card.dataset.type = 'post';
+            card.dataset.id = postId;
+            card.dataset.fullContent = content;
+
+            const truncated = content.length > 140 ? content.substring(0, 140) + '...' : content;
+            const charClass = content.length <= 250 ? 'char-ok' : content.length <= 280 ? 'char-warn' : 'char-over';
+
+            card.innerHTML = `
+                <div class="card-content">${truncated.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                <div class="card-meta post-meta">
+                    <span><span class="status-dot ${status}"></span>Draft</span>
+                    <span class="char-count ${charClass}">${content.length}/280</span>
+                </div>
+            `;
+            return card;
+        }
+
+        document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+
+        // Smooth animation loop using requestAnimationFrame
+        function animateGhost() {
+            if (!ghostEl || !dragState?.dragging) {
+                animationId = null;
+                return;
+            }
+
+            // Lerp interpolation for buttery smooth movement
+            const lerpFactor = 0.2;
+            ghostPos.x += (targetPos.x - ghostPos.x) * lerpFactor;
+            ghostPos.y += (targetPos.y - ghostPos.y) * lerpFactor;
+
+            // Calculate slight rotation based on horizontal velocity
+            const velocityX = targetPos.x - ghostPos.x;
+            const rotation = Math.max(-2, Math.min(2, velocityX * 0.03));
+
+            ghostEl.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.02) rotate(${rotation}deg)`;
 
             animationId = requestAnimationFrame(animateGhost);
         }
 
-        function createGhost(card) {
-            const rect = card.getBoundingClientRect();
-            const el = card.cloneNode(true);
-            el.className = 'card drag-ghost';
-            el.style.width = rect.width + 'px';
-            el.style.left = '0px';
-            el.style.top = '0px';
-            el.style.padding = getComputedStyle(card).padding;
-            document.body.appendChild(el);
-
-            // Initialize position at card's current location
-            ghostPos.x = rect.left;
-            ghostPos.y = rect.top;
-            targetPos.x = rect.left;
-            targetPos.y = rect.top;
-            lastFrameTime = 0;
-
-            // Set initial transform
-            el.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.02) rotate(0deg)`;
-
-            // Fade in smoothly
-            requestAnimationFrame(() => {
-                el.classList.add('visible');
-                animationId = requestAnimationFrame(animateGhost);
-            });
-
-            return el;
-        }
-
-        function updatePlaceholder(colBody, y) {
-            // Remove old placeholder
-            if (placeholder) {
-                placeholder.classList.remove('visible');
-            }
-
-            // Create or reuse placeholder
-            if (!placeholder || !placeholder.parentNode) {
-                placeholder = document.createElement('div');
-                placeholder.className = 'drop-placeholder';
-            }
-
-            const cards = Array.from(colBody.querySelectorAll('.card:not(.is-dragging)'));
-            let insertBefore = null;
-
-            for (const c of cards) {
-                const rect = c.getBoundingClientRect();
-                if (y < rect.top + rect.height / 2) {
-                    insertBefore = c;
-                    break;
-                }
-            }
-
-            if (insertBefore) {
-                colBody.insertBefore(placeholder, insertBefore);
-            } else {
-                colBody.appendChild(placeholder);
-            }
-
-            // Animate in
-            requestAnimationFrame(() => {
-                placeholder.classList.add('visible');
-            });
-        }
-
-        function cleanup(animate = true, dropTarget = null) {
-            if (animationId) {
-                cancelAnimationFrame(animationId);
-                animationId = null;
-            }
-            lastFrameTime = 0;
-
-            if (drag && drag.card) {
-                drag.card.classList.remove('is-dragging');
-            }
-
-            document.body.classList.remove('is-dragging');
-            document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
-
-            if (placeholder) {
-                placeholder.classList.remove('visible');
-                setTimeout(() => {
-                    if (placeholder && placeholder.parentNode) {
-                        placeholder.remove();
-                    }
-                    placeholder = null;
-                }, 120);
-            }
-
-            if (ghost) {
-                if (animate && dropTarget) {
-                    // Smooth snap to drop zone
-                    const targetRect = dropTarget.getBoundingClientRect();
-                    ghost.style.transition = 'transform 0.18s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.12s ease 0.06s';
-                    ghost.style.transform = `translate3d(${targetRect.left + 8}px, ${targetRect.top + 8}px, 0) scale(0.96) rotate(0deg)`;
-                    ghost.style.opacity = '0';
-                    setTimeout(() => {
-                        if (ghost) ghost.remove();
-                        ghost = null;
-                    }, 200);
-                } else if (animate) {
-                    // Snap back animation
-                    ghost.style.transition = 'transform 0.15s ease-out, opacity 0.1s ease';
-                    ghost.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(0.95) rotate(0deg)`;
-                    ghost.style.opacity = '0';
-                    setTimeout(() => {
-                        if (ghost) ghost.remove();
-                        ghost = null;
-                    }, 150);
-                } else {
-                    ghost.remove();
-                    ghost = null;
-                }
-            }
-
-            drag = null;
-        }
-
-        async function handleDrop(x, y) {
-            // Get element under cursor (ghost has pointer-events: none)
-            const target = document.elementFromPoint(x, y);
-            const colBody = target ? target.closest('.column-body') : null;
-
-            if (!colBody || !drag) return { success: false, target: null };
-
-            const targetCol = colBody.closest('.column');
-            const targetStatus = targetCol.dataset.status;
-            if (targetStatus === 'quotes') return { success: false, target: null };
-
-            const sourceCol = drag.card.closest('.column');
-
-            try {
-                let response, data;
-                if (drag.type === 'quote') {
-                    response = await fetch('/api/quote/to-post', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({quote_id: drag.id, status: targetStatus})
-                    });
-                    data = await response.json();
-                } else {
-                    response = await fetch('/api/post/status', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({post_id: drag.id, status: targetStatus})
-                    });
-                    data = await response.json();
-                }
-
-                if (response.ok) {
-                    // Seamless DOM update - no page reload!
-                    if (drag.type === 'quote') {
-                        // Quote converted to post - remove from quotes, will appear on next refresh
-                        // For now just remove the card smoothly
-                        drag.card.style.transition = 'opacity 0.2s, transform 0.2s';
-                        drag.card.style.opacity = '0';
-                        drag.card.style.transform = 'scale(0.9)';
-                        setTimeout(() => drag.card.remove(), 200);
-                        showToast('Post created!');
-                        // Store the new post content
-                        if (data.post_id && data.content) {
-                            POST_CONTENT[data.post_id] = data.content;
-                        }
-                        // Reload after a moment to show the new post in the right column
-                        setTimeout(() => location.reload(), 400);
-                    } else {
-                        // Move existing post card to new column
-                        drag.card.classList.remove('pending', 'approved', 'posted');
-                        drag.card.classList.add(targetStatus);
-
-                        // Update status dot
-                        const statusDot = drag.card.querySelector('.status-dot');
-                        if (statusDot) {
-                            statusDot.classList.remove('pending', 'approved', 'posted');
-                            statusDot.classList.add(targetStatus);
-                        }
-
-                        // Animate card to new position
-                        drag.card.style.transition = 'none';
-                        drag.card.style.opacity = '0';
-                        colBody.appendChild(drag.card);
-
-                        requestAnimationFrame(() => {
-                            drag.card.style.transition = 'opacity 0.25s ease, transform 0.25s ease';
-                            drag.card.style.opacity = '1';
-                            drag.card.style.transform = 'translateY(0)';
-                        });
-
-                        // Update column counts
-                        updateColumnCount(sourceCol);
-                        updateColumnCount(targetCol);
-
-                        showToast('Moved to ' + targetStatus);
-                    }
-                    return { success: true, target: colBody };
-                } else {
-                    showToast('Failed to move', true);
-                    return { success: false, target: null };
-                }
-            } catch (err) {
-                showToast('Error: ' + err.message, true);
-                return { success: false, target: null };
-            }
-        }
-
-        function updateColumnCount(col) {
-            const count = col.querySelectorAll('.card').length;
-            const countEl = col.querySelector('.column-count');
-            if (countEl) countEl.textContent = count;
-        }
-
-        // Pointer events
-        document.addEventListener('pointerdown', function(e) {
-            if (e.button !== 0) return; // Left click only
+        document.addEventListener('pointerdown', e => {
             const card = e.target.closest('.card');
-            if (!card || e.target.closest('.modal') || e.target.closest('.modal-overlay')) return;
-
+            if (!card || e.button !== 0 || e.target.closest('.modal-overlay') || e.target.closest('.upload-modal')) return;
             e.preventDefault();
-
             const rect = card.getBoundingClientRect();
-
-            drag = {
-                card: card,
+            dragState = {
+                card,
                 type: card.dataset.type,
                 id: card.dataset.id,
                 startX: e.clientX,
                 startY: e.clientY,
-                offsetX: e.clientX - rect.left,
-                offsetY: e.clientY - rect.top,
-                isDragging: false
+                offX: e.clientX - rect.left,
+                offY: e.clientY - rect.top,
+                dragging: false
             };
-        }, { passive: false });
+        }, {passive: false});
 
-        document.addEventListener('pointermove', function(e) {
-            if (!drag) return;
+        document.addEventListener('pointermove', e => {
+            if (!dragState) return;
+            const dist = Math.hypot(e.clientX - dragState.startX, e.clientY - dragState.startY);
 
-            const dx = e.clientX - drag.startX;
-            const dy = e.clientY - drag.startY;
-            const distance = Math.sqrt(dx * dx + dy * dy);
-
-            // Start dragging
-            if (!drag.isDragging && distance > DRAG_THRESHOLD) {
-                drag.isDragging = true;
-                drag.card.classList.add('is-dragging');
+            if (!dragState.dragging && dist > 5) {
+                dragState.dragging = true;
+                dragState.card.classList.add('is-dragging');
                 document.body.classList.add('is-dragging');
-                ghost = createGhost(drag.card);
+
+                // Create ghost element
+                const rect = dragState.card.getBoundingClientRect();
+                ghostEl = dragState.card.cloneNode(true);
+                ghostEl.className = 'card drag-ghost';
+                ghostEl.style.cssText = `width:${rect.width}px;left:0;top:0;`;
+
+                // Initialize positions
+                ghostPos.x = rect.left;
+                ghostPos.y = rect.top;
+                targetPos.x = rect.left;
+                targetPos.y = rect.top;
+
+                ghostEl.style.transform = `translate3d(${ghostPos.x}px, ${ghostPos.y}px, 0) scale(1.02)`;
+                document.body.appendChild(ghostEl);
+
+                // Fade in ghost
+                requestAnimationFrame(() => ghostEl.classList.add('visible'));
+
+                // Start animation loop
+                if (!animationId) animationId = requestAnimationFrame(animateGhost);
             }
 
-            if (!drag.isDragging) return;
+            if (!dragState.dragging) return;
 
-            // Update target position for spring animation
-            targetPos.x = e.clientX - drag.offsetX;
-            targetPos.y = e.clientY - drag.offsetY;
+            // Update target position (cursor position minus offset)
+            targetPos.x = e.clientX - dragState.offX;
+            targetPos.y = e.clientY - dragState.offY;
 
-            // Find drop target
+            // Highlight drop target
+            document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
+            const el = document.elementFromPoint(e.clientX, e.clientY);
+            const col = el?.closest('.column');
+            if (col && col.dataset.status !== 'quotes') col.classList.add('drag-over');
+        });
+
+        document.addEventListener('pointerup', async e => {
+            if (!dragState) return;
+            const wasDragging = dragState.dragging;
+            const card = dragState.card;
+
+            // Stop animation loop
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+
+            // Cleanup
+            card.classList.remove('is-dragging');
+            document.body.classList.remove('is-dragging');
             document.querySelectorAll('.column').forEach(c => c.classList.remove('drag-over'));
 
-            const target = document.elementFromPoint(e.clientX, e.clientY);
-            const colBody = target ? target.closest('.column-body') : null;
+            if (!wasDragging) {
+                openModal(card);
+                dragState = null;
+                return;
+            }
 
-            if (colBody) {
-                const col = colBody.closest('.column');
-                const status = col.dataset.status;
-                if (status !== 'quotes') {
-                    col.classList.add('drag-over');
-                    updatePlaceholder(colBody, e.clientY);
-                } else if (placeholder) {
-                    placeholder.classList.remove('visible');
+            // Handle drop
+            const dropEl = document.elementFromPoint(e.clientX, e.clientY);
+            const targetCol = dropEl?.closest('.column');
+            const targetBody = targetCol?.querySelector('.column-body');
+            const targetStatus = targetCol?.dataset.status;
+
+            // Remove ghost with animation
+            if (ghostEl) {
+                ghostEl.classList.add('dropping');
+                if (targetCol && targetStatus !== 'quotes') {
+                    const targetRect = targetBody.getBoundingClientRect();
+                    ghostEl.style.transform = `translate3d(${targetRect.left + 8}px, ${targetRect.top + 8}px, 0) scale(0.95)`;
+                } else {
+                    const cardRect = card.getBoundingClientRect();
+                    ghostEl.style.transform = `translate3d(${cardRect.left}px, ${cardRect.top}px, 0) scale(1)`;
                 }
-            } else if (placeholder) {
-                placeholder.classList.remove('visible');
+                setTimeout(() => { if (ghostEl) { ghostEl.remove(); ghostEl = null; } }, 200);
             }
-        });
 
-        document.addEventListener('pointerup', async function(e) {
-            if (!drag) return;
-
-            const wasDragging = drag.isDragging;
-
-            if (wasDragging) {
-                const result = await handleDrop(e.clientX, e.clientY);
-                cleanup(true, result.target);
-            } else {
-                openModal(drag.card);
-                cleanup(false);
+            if (!targetCol || targetStatus === 'quotes') {
+                dragState = null;
+                return;
             }
-        });
 
-        document.addEventListener('pointercancel', function() {
-            cleanup(true);
-        });
+            const sourceCol = card.closest('.column');
 
-        document.addEventListener('keydown', function(e) {
-            if (e.key === 'Escape') {
-                if (drag) {
-                    cleanup(true);
+            try {
+                const endpoint = dragState.type === 'quote' ? '/api/quote/to-post' : '/api/post/status';
+                const body = dragState.type === 'quote'
+                    ? {quote_id: dragState.id, status: targetStatus}
+                    : {post_id: dragState.id, status: targetStatus};
+
+                const resp = await fetch(endpoint, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(body)
+                });
+
+                if (resp.ok) {
+                    const data = await resp.json();
+
+                    if (dragState.type === 'quote') {
+                        // Quote to post - create new card dynamically, NO RELOAD
+                        const newCard = createPostCard(data.post_id, data.content, targetStatus);
+                        newCard.style.opacity = '0';
+                        newCard.style.transform = 'scale(0.95)';
+                        targetBody.insertBefore(newCard, targetBody.firstChild);
+
+                        // Fade out quote card
+                        card.style.transition = 'opacity 0.15s ease, transform 0.15s ease';
+                        card.style.opacity = '0';
+                        card.style.transform = 'scale(0.95)';
+
+                        setTimeout(() => {
+                            card.remove();
+                            // Fade in new post card
+                            newCard.style.transition = 'opacity 0.2s ease, transform 0.2s ease';
+                            requestAnimationFrame(() => {
+                                newCard.style.opacity = '1';
+                                newCard.style.transform = 'scale(1)';
+                                setTimeout(() => newCard.style.transition = '', 250);
+                            });
+
+                            // Update counts
+                            [sourceCol, targetCol].forEach(col => {
+                                const cnt = col.querySelectorAll('.card').length;
+                                const countEl = col.querySelector('.column-count');
+                                if (countEl) countEl.textContent = cnt;
+                            });
+
+                            // Update stats
+                            const unusedEl = document.getElementById('stat-unused');
+                            if (unusedEl) {
+                                const current = parseInt(unusedEl.textContent, 10) || 0;
+                                unusedEl.textContent = Math.max(0, current - 1);
+                            }
+                        }, 150);
+
+                        showToast('Post created!');
+                    } else {
+                        // Move existing post card - NO RELOAD
+                        card.style.transition = 'opacity 0.15s ease';
+                        card.style.opacity = '0';
+
+                        setTimeout(() => {
+                            card.classList.remove('pending', 'approved', 'posted');
+                            card.classList.add(targetStatus);
+                            const dot = card.querySelector('.status-dot');
+                            if (dot) { dot.classList.remove('pending', 'approved', 'posted'); dot.classList.add(targetStatus); }
+                            targetBody.appendChild(card);
+
+                            // Update counts
+                            [sourceCol, targetCol].forEach(col => {
+                                const cnt = col.querySelectorAll('.card').length;
+                                const countEl = col.querySelector('.column-count');
+                                if (countEl) countEl.textContent = cnt;
+                            });
+
+                            // Fade back in
+                            requestAnimationFrame(() => {
+                                card.style.opacity = '1';
+                                setTimeout(() => card.style.transition = '', 200);
+                            });
+                        }, 150);
+
+                        showToast('Moved to ' + targetStatus);
+                    }
+                } else {
+                    showToast('Failed', true);
                 }
-                closeModal();
+            } catch (err) {
+                showToast('Error', true);
             }
+
+            dragState = null;
         });
 
-        // Prevent default drag behavior
+        document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
         document.addEventListener('dragstart', e => e.preventDefault());
     })();
 
