@@ -1987,9 +1987,12 @@ DASHBOARD_TEMPLATE = """
         const fontSize = style === 'fullbleed' ? 42 : 36;
         const lineHeight = fontSize * 1.5;
 
+        // Strip hashtags from content (they go in caption, not image)
+        const cleanContent = imgGenState.content.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+
         // Calculate content height first
         ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
-        const lines = wrapText(ctx, imgGenState.content, contentWidth - 40);
+        const lines = wrapText(ctx, cleanContent, contentWidth - 40);
         const textHeight = lines.length * lineHeight;
 
         if (style === 'fullbleed') {
@@ -2294,9 +2297,12 @@ DASHBOARD_TEMPLATE = """
         const fontSize = 36;
         const lineHeight = fontSize * 1.5;
 
+        // Strip hashtags from content (they go in caption, not image)
+        const cleanContent = content.replace(/#\w+/g, '').replace(/\s+/g, ' ').trim();
+
         // Calculate content height
         ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
-        const lines = wrapText(ctx, content, contentWidth - 80);
+        const lines = wrapText(ctx, cleanContent, contentWidth - 80);
         const textHeight = lines.length * lineHeight;
 
         // Dynamic card
