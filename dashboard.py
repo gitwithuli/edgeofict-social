@@ -1800,6 +1800,9 @@ DASHBOARD_TEMPLATE = """
 
         document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
         document.addEventListener('dragstart', e => e.preventDefault());
+
+        // Expose closeModal globally
+        window.closeModal = closeModal;
     })();
 
     // Image Generator
