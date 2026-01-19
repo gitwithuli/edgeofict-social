@@ -513,6 +513,7 @@ DASHBOARD_TEMPLATE = """
         body.is-dragging * { cursor: grabbing !important; }
 
         .btn-post-x {
+            display: inline-block;
             background: #000;
             color: #fff;
             border: 1px solid #333;
@@ -527,10 +528,7 @@ DASHBOARD_TEMPLATE = """
         .btn-post-x:hover {
             background: #1d9bf0;
             border-color: #1d9bf0;
-        }
-        .btn-post-x:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
+            color: #fff;
         }
 
         /* Create Button */
@@ -1046,9 +1044,9 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="modal-status">
                 <span class="status-label" id="modal-status"></span>
-                <button class="btn-post-x" id="btn-post-x" onclick="postToX()" style="display:none;">
-                    Post to 𝕏
-                </button>
+                <a class="btn-post-x" id="btn-post-x" href="#" target="_blank" style="display:none;text-decoration:none;">
+                    Post to 𝕏 ↗
+                </a>
                 <span id="modal-source" style="color: #71767b; font-size: 0.85rem;"></span>
             </div>
         </div>
@@ -1202,13 +1200,17 @@ DASHBOARD_TEMPLATE = """
             document.getElementById('modal-source').textContent = card.querySelector('.tag-source')?.textContent || '';
             document.getElementById('modal-time').textContent = new Date().toLocaleString('en-US', {hour:'numeric', minute:'2-digit', month:'short', day:'numeric', year:'numeric'});
 
-            // Show "Post to X" button for approved posts
+            // Show "Post to X" button for approved/pending posts (opens Twitter intent)
             const postBtn = document.getElementById('btn-post-x');
-            if (type === 'post' && status === 'approved') {
+            if (type === 'post' && (status === 'approved' || status === 'pending')) {
+                const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(content);
+                postBtn.href = tweetUrl;
                 postBtn.style.display = 'block';
-                postBtn.dataset.postId = card.dataset.id;
-                postBtn.disabled = false;
-                postBtn.textContent = 'Post to 𝕏';
+            } else if (type === 'quote') {
+                // Also allow for quotes preview
+                const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(content);
+                postBtn.href = tweetUrl;
+                postBtn.style.display = 'block';
             } else {
                 postBtn.style.display = 'none';
             }
@@ -1502,80 +1504,6 @@ DASHBOARD_TEMPLATE = """
         document.addEventListener('dragstart', e => e.preventDefault());
     })();
 
-    // Post to X function
-    async function postToX() {
-        const btn = document.getElementById('btn-post-x');
-        const postId = btn.dataset.postId;
-
-        if (!postId) return;
-
-        btn.disabled = true;
-        btn.textContent = 'Posting...';
-
-        try {
-            const resp = await fetch('/api/post/tweet', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({post_id: postId})
-            });
-
-            const data = await resp.json();
-
-            if (resp.ok && data.success) {
-                btn.textContent = '✓ Posted!';
-                btn.style.background = '#22c55e';
-                btn.style.borderColor = '#22c55e';
-
-                // Update the card in the DOM
-                const card = document.querySelector(`.card[data-id="${postId}"]`);
-                if (card) {
-                    card.classList.remove('approved');
-                    card.classList.add('posted');
-                    const dot = card.querySelector('.status-dot');
-                    if (dot) {
-                        dot.classList.remove('approved');
-                        dot.classList.add('posted');
-                    }
-                }
-
-                // Show toast with link
-                const toast = document.getElementById('toast');
-                toast.innerHTML = `Posted! <a href="${data.url}" target="_blank" style="color:white;text-decoration:underline;">View on X</a>`;
-                toast.className = 'toast show';
-                setTimeout(() => toast.className = 'toast', 5000);
-
-                // Close modal after delay
-                setTimeout(() => {
-                    document.getElementById('modal').classList.remove('show');
-                    location.reload();
-                }, 1500);
-            } else {
-                btn.textContent = 'Failed';
-                btn.style.background = '#ef4444';
-                btn.style.borderColor = '#ef4444';
-
-                const toast = document.getElementById('toast');
-                toast.textContent = data.error || 'Failed to post';
-                toast.className = 'toast show error';
-                setTimeout(() => toast.className = 'toast', 3000);
-
-                setTimeout(() => {
-                    btn.textContent = 'Post to 𝕏';
-                    btn.style.background = '';
-                    btn.style.borderColor = '';
-                    btn.disabled = false;
-                }, 2000);
-            }
-        } catch (err) {
-            btn.textContent = 'Error';
-            btn.disabled = false;
-
-            const toast = document.getElementById('toast');
-            toast.textContent = 'Network error';
-            toast.className = 'toast show error';
-            setTimeout(() => toast.className = 'toast', 3000);
-        }
-    }
 
     // Upload Modal Functions (outside IIFE to be globally accessible)
     let selectedFile = null;
