@@ -2224,13 +2224,34 @@ DASHBOARD_TEMPLATE = """
     async function postToFacebook() {
         const btn = document.querySelector('.btn-share.facebook');
         btn.disabled = true;
-        btn.textContent = 'Posting...';
+        btn.textContent = 'Generating...';
 
         try {
+            const canvas = await generateTweetCanvas(imgGenState.content);
+            const imageData = canvas.toDataURL('image/png');
+
+            btn.textContent = 'Uploading...';
+
+            const uploadResp = await fetch('/api/cloudinary/upload', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({image: imageData})
+            });
+
+            const uploadData = await uploadResp.json();
+            if (!uploadResp.ok || !uploadData.secure_url) {
+                throw new Error(uploadData.error || 'Failed to upload image');
+            }
+
+            btn.textContent = 'Posting...';
+
             const resp = await fetch('/api/post/facebook', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({content: imgGenState.content})
+                body: JSON.stringify({
+                    content: imgGenState.content,
+                    image_url: uploadData.secure_url
+                })
             });
 
             const data = await resp.json();
@@ -2239,7 +2260,7 @@ DASHBOARD_TEMPLATE = """
                 btn.textContent = '✓ Posted!';
                 btn.style.background = '#22c55e';
                 btn.style.color = '#fff';
-                showToast('Posted to Facebook!');
+                showToast('Posted to Facebook with image!');
 
                 setTimeout(() => {
                     btn.textContent = '📘 Facebook';
@@ -2914,10 +2935,11 @@ def verify_twitter():
 
 @app.route('/api/post/facebook', methods=['POST'])
 def post_to_facebook():
-    """Post content to Facebook Page."""
+    """Post content to Facebook Page (with optional image)."""
     data = request.json
     post_id = data.get('post_id')
     content = data.get('content')
+    image_url = data.get('image_url')
 
     if not post_id and not content:
         return jsonify({'error': 'Missing post_id or content'}), 400
@@ -2929,7 +2951,6 @@ def post_to_facebook():
         if not client.is_configured():
             return jsonify({'error': 'Facebook API not configured'}), 500
 
-        # Get content from post if post_id provided
         if post_id:
             session = get_session()
             post = session.query(Post).filter(Post.id == post_id).first()
@@ -2937,7 +2958,10 @@ def post_to_facebook():
                 return jsonify({'error': 'Post not found'}), 404
             content = post.content
 
-        result = client.post_text(content)
+        if image_url:
+            result = client.post_image(image_url, content)
+        else:
+            result = client.post_text(content)
 
         return jsonify({
             'success': True,
