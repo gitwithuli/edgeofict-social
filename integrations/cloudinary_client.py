@@ -94,13 +94,17 @@ class CloudinaryClient:
         except Exception as e:
             return {'configured': False, 'error': str(e)}
 
-    def cleanup_old_images(self, folder='edgeofict', days=14):
+    def cleanup_old_images(self, folder='edgeofict', days=14, exclude=None):
         """Delete images older than specified days from a folder."""
         if not self.is_configured():
             return {'success': False, 'error': 'Credentials not configured'}
 
+        if exclude is None:
+            exclude = ['profile_picture', 'profile']
+
         cutoff_date = datetime.utcnow() - timedelta(days=days)
         deleted = []
+        skipped = []
         errors = []
         next_cursor = None
 
@@ -118,11 +122,16 @@ class CloudinaryClient:
                     return {'success': False, 'error': data['error'].get('message')}
 
                 for resource in data.get('resources', []):
+                    public_id = resource['public_id']
+
+                    if any(exc in public_id for exc in exclude):
+                        skipped.append(public_id)
+                        continue
+
                     created_at = datetime.fromisoformat(resource['created_at'].replace('Z', '+00:00'))
                     created_at = created_at.replace(tzinfo=None)
 
                     if created_at < cutoff_date:
-                        public_id = resource['public_id']
                         delete_result = self._delete_resource(public_id)
                         if delete_result:
                             deleted.append(public_id)
@@ -137,6 +146,8 @@ class CloudinaryClient:
                 'success': True,
                 'deleted_count': len(deleted),
                 'deleted': deleted,
+                'skipped_count': len(skipped),
+                'skipped': skipped,
                 'errors': errors
             }
 
