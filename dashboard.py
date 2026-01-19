@@ -510,6 +510,27 @@ DASHBOARD_TEMPLATE = """
         body.is-dragging { cursor: grabbing !important; }
         body.is-dragging * { cursor: grabbing !important; }
 
+        .btn-post-x {
+            background: #000;
+            color: #fff;
+            border: 1px solid #333;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-post-x:hover {
+            background: #1d9bf0;
+            border-color: #1d9bf0;
+        }
+        .btn-post-x:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         /* Create Button */
         .btn-create {
             display: flex;
@@ -1023,6 +1044,9 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="modal-status">
                 <span class="status-label" id="modal-status"></span>
+                <button class="btn-post-x" id="btn-post-x" onclick="postToX()" style="display:none;">
+                    Post to 𝕏
+                </button>
                 <span id="modal-source" style="color: #71767b; font-size: 0.85rem;"></span>
             </div>
         </div>
@@ -1168,6 +1192,18 @@ DASHBOARD_TEMPLATE = """
 
             document.getElementById('modal-source').textContent = card.querySelector('.tag-source')?.textContent || '';
             document.getElementById('modal-time').textContent = new Date().toLocaleString('en-US', {hour:'numeric', minute:'2-digit', month:'short', day:'numeric', year:'numeric'});
+
+            // Show "Post to X" button for approved posts
+            const postBtn = document.getElementById('btn-post-x');
+            if (type === 'post' && status === 'approved') {
+                postBtn.style.display = 'block';
+                postBtn.dataset.postId = card.dataset.id;
+                postBtn.disabled = false;
+                postBtn.textContent = 'Post to 𝕏';
+            } else {
+                postBtn.style.display = 'none';
+            }
+
             document.getElementById('modal').classList.add('show');
         }
 
@@ -1418,6 +1454,81 @@ DASHBOARD_TEMPLATE = """
         document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
         document.addEventListener('dragstart', e => e.preventDefault());
     })();
+
+    // Post to X function
+    async function postToX() {
+        const btn = document.getElementById('btn-post-x');
+        const postId = btn.dataset.postId;
+
+        if (!postId) return;
+
+        btn.disabled = true;
+        btn.textContent = 'Posting...';
+
+        try {
+            const resp = await fetch('/api/post/tweet', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({post_id: postId})
+            });
+
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                btn.textContent = '✓ Posted!';
+                btn.style.background = '#22c55e';
+                btn.style.borderColor = '#22c55e';
+
+                // Update the card in the DOM
+                const card = document.querySelector(`.card[data-id="${postId}"]`);
+                if (card) {
+                    card.classList.remove('approved');
+                    card.classList.add('posted');
+                    const dot = card.querySelector('.status-dot');
+                    if (dot) {
+                        dot.classList.remove('approved');
+                        dot.classList.add('posted');
+                    }
+                }
+
+                // Show toast with link
+                const toast = document.getElementById('toast');
+                toast.innerHTML = `Posted! <a href="${data.url}" target="_blank" style="color:white;text-decoration:underline;">View on X</a>`;
+                toast.className = 'toast show';
+                setTimeout(() => toast.className = 'toast', 5000);
+
+                // Close modal after delay
+                setTimeout(() => {
+                    document.getElementById('modal').classList.remove('show');
+                    location.reload();
+                }, 1500);
+            } else {
+                btn.textContent = 'Failed';
+                btn.style.background = '#ef4444';
+                btn.style.borderColor = '#ef4444';
+
+                const toast = document.getElementById('toast');
+                toast.textContent = data.error || 'Failed to post';
+                toast.className = 'toast show error';
+                setTimeout(() => toast.className = 'toast', 3000);
+
+                setTimeout(() => {
+                    btn.textContent = 'Post to 𝕏';
+                    btn.style.background = '';
+                    btn.style.borderColor = '';
+                    btn.disabled = false;
+                }, 2000);
+            }
+        } catch (err) {
+            btn.textContent = 'Error';
+            btn.disabled = false;
+
+            const toast = document.getElementById('toast');
+            toast.textContent = 'Network error';
+            toast.className = 'toast show error';
+            setTimeout(() => toast.className = 'toast', 3000);
+        }
+    }
 
     // Upload Modal Functions (outside IIFE to be globally accessible)
     let selectedFile = null;
@@ -1789,6 +1900,68 @@ def extract_quotes_from_upload():
         return jsonify({'error': str(e)}), 500
     except Exception as e:
         return jsonify({'error': f'Extraction failed: {str(e)}'}), 500
+
+
+@app.route('/api/post/tweet', methods=['POST'])
+def post_to_twitter():
+    """Post an approved post to Twitter/X."""
+    data = request.json
+    post_id = data.get('post_id')
+
+    if not post_id:
+        return jsonify({'error': 'Missing post_id'}), 400
+
+    session = get_session()
+    post = session.query(Post).filter(Post.id == post_id).first()
+
+    if not post:
+        return jsonify({'error': 'Post not found'}), 404
+
+    if post.status == PostStatus.POSTED.value:
+        return jsonify({'error': 'Already posted'}), 400
+
+    if post.status != PostStatus.APPROVED.value:
+        return jsonify({'error': 'Post must be approved before posting'}), 400
+
+    try:
+        from integrations.twitter_client import TwitterClient
+        client = TwitterClient(dry_run=False)
+
+        if not client.is_configured():
+            return jsonify({'error': 'Twitter API not configured'}), 500
+
+        result = client.client.create_tweet(text=post.content)
+
+        post.status = PostStatus.POSTED.value
+        post.posted_time = datetime.now(UTC)
+        post.post_id = str(result.data['id'])
+        session.commit()
+
+        return jsonify({
+            'success': True,
+            'tweet_id': result.data['id'],
+            'url': f"https://x.com/edgeofict/status/{result.data['id']}"
+        })
+
+    except Exception as e:
+        return jsonify({'error': f'Failed to post: {str(e)}'}), 500
+
+
+@app.route('/api/twitter/verify', methods=['GET'])
+def verify_twitter():
+    """Verify Twitter API credentials."""
+    try:
+        from integrations.twitter_client import TwitterClient
+        client = TwitterClient(dry_run=False)
+
+        if not client.is_configured():
+            return jsonify({'configured': False, 'error': 'Twitter API not configured'})
+
+        result = client.verify_credentials()
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'configured': False, 'error': str(e)})
 
 
 def ensure_db_seeded():
