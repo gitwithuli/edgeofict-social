@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
 """Kanban dashboard with smooth drag-and-drop."""
 
+import os
 from flask import Flask, render_template_string, request, jsonify
 from datetime import datetime, UTC
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from core.models import Quote, Post, PostStatus, init_db, get_session
+
+PROFILE_CONFIG = {
+    'picture_url': os.getenv('PROFILE_PICTURE_URL', 'https://res.cloudinary.com/dbjtqhjxi/image/upload/v1768853567/edgeofict/profile_picture.jpg'),
+    'name': os.getenv('PROFILE_NAME', 'EdgeOfICT'),
+    'handle': os.getenv('PROFILE_HANDLE', '@edgeofict'),
+}
 
 app = Flask(__name__)
 
@@ -407,6 +417,8 @@ DASHBOARD_TEMPLATE = """
             border-radius: 50%;
             transition: all 0.2s;
             line-height: 1;
+            position: relative;
+            z-index: 10;
         }
 
         .modal-close:hover {
@@ -435,6 +447,12 @@ DASHBOARD_TEMPLATE = """
             font-size: 1.1rem;
             color: white;
             font-family: 'JetBrains Mono', monospace;
+            overflow: hidden;
+        }
+        .x-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
         }
 
         .x-user-info { flex: 1; }
@@ -549,6 +567,53 @@ DASHBOARD_TEMPLATE = """
         .btn-generate-img:hover {
             transform: scale(1.05);
             box-shadow: 0 4px 15px rgba(225, 48, 108, 0.4);
+        }
+
+        .btn-post-instagram {
+            display: inline-block;
+            background: linear-gradient(135deg, #833AB4, #E1306C, #F77737);
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-post-instagram:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(225, 48, 108, 0.4);
+        }
+        .btn-post-instagram:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-post-facebook {
+            display: inline-block;
+            background: #1877F2;
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .btn-post-facebook:hover {
+            background: #166FE5;
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(24, 119, 242, 0.4);
+        }
+        .btn-post-facebook:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
         }
 
         .image-generator-modal {
@@ -1266,10 +1331,10 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="x-post">
                 <div class="x-header">
-                    <div class="x-avatar">E</div>
+                    <div class="x-avatar">{% if profile.picture_url %}<img src="{{ profile.picture_url }}" alt="">{% else %}{{ profile.name[0] }}{% endif %}</div>
                     <div class="x-user-info">
-                        <div class="x-name">EdgeOfICT</div>
-                        <div class="x-handle">@edgeofict</div>
+                        <div class="x-name">{{ profile.name }}</div>
+                        <div class="x-handle">{{ profile.handle }}</div>
                     </div>
                 </div>
                 <div class="x-content" id="modal-content"></div>
@@ -1286,12 +1351,18 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="modal-status">
                 <span class="status-label" id="modal-status"></span>
-                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
                     <a class="btn-post-x" id="btn-post-x" href="#" target="_blank" style="display:none;text-decoration:none;">
                         Post to 𝕏 ↗
                     </a>
                     <button class="btn-generate-img" id="btn-generate-img" onclick="openImageGenerator()" style="display:none;">
                         📸 Create Image
+                    </button>
+                    <button class="btn-post-instagram" id="btn-post-instagram" onclick="postToInstagramFromModal()" style="display:none;">
+                        📷 Instagram
+                    </button>
+                    <button class="btn-post-facebook" id="btn-post-facebook" onclick="postToFacebookFromModal()" style="display:none;">
+                        📘 Facebook
                     </button>
                 </div>
                 <span id="modal-source" style="color: #71767b; font-size: 0.85rem;"></span>
@@ -1424,6 +1495,22 @@ DASHBOARD_TEMPLATE = """
     </div>
 
     <script>
+    const PROFILE = {
+        pictureUrl: '{{ profile.picture_url }}',
+        name: '{{ profile.name }}',
+        handle: '{{ profile.handle }}'
+    };
+    let profileImageLoaded = null;
+    if (PROFILE.pictureUrl) {
+        profileImageLoaded = new Promise((resolve) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => resolve(img);
+            img.onerror = () => resolve(null);
+            img.src = PROFILE.pictureUrl;
+        });
+    }
+
     (function() {
         'use strict';
 
@@ -1497,20 +1584,30 @@ DASHBOARD_TEMPLATE = """
             document.getElementById('modal-source').textContent = card.querySelector('.tag-source')?.textContent || '';
             document.getElementById('modal-time').textContent = new Date().toLocaleString('en-US', {hour:'numeric', minute:'2-digit', month:'short', day:'numeric', year:'numeric'});
 
-            // Show "Post to X" button and "Create Image" button
+            // Show action buttons
             const postBtn = document.getElementById('btn-post-x');
             const imgBtn = document.getElementById('btn-generate-img');
+            const igBtn = document.getElementById('btn-post-instagram');
+            const fbBtn = document.getElementById('btn-post-facebook');
 
             if (type === 'post' || type === 'quote') {
                 const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(content);
                 postBtn.href = tweetUrl;
                 postBtn.style.display = 'block';
                 imgBtn.style.display = 'block';
-                // Store content for image generator
+                igBtn.style.display = 'block';
+                fbBtn.style.display = 'block';
+                // Store content for posting functions
                 imgBtn.dataset.content = content;
+                igBtn.dataset.content = content;
+                igBtn.dataset.postId = card.dataset.id || '';
+                fbBtn.dataset.content = content;
+                fbBtn.dataset.postId = card.dataset.id || '';
             } else {
                 postBtn.style.display = 'none';
                 imgBtn.style.display = 'none';
+                igBtn.style.display = 'none';
+                fbBtn.style.display = 'none';
             }
 
             document.getElementById('modal').classList.add('show');
@@ -1850,11 +1947,12 @@ DASHBOARD_TEMPLATE = """
         renderTweetImage();
     }
 
-    function renderTweetImage() {
+    async function renderTweetImage() {
         const canvas = document.getElementById('tweetCanvas');
         const ctx = canvas.getContext('2d');
         const dim = dimensions[imgGenState.dimension];
         const theme = themes[imgGenState.theme];
+        const profileImg = profileImageLoaded ? await profileImageLoaded : null;
 
         canvas.width = dim.width;
         canvas.height = dim.height;
@@ -1895,31 +1993,38 @@ DASHBOARD_TEMPLATE = """
         const avatarX = cardX + 32;
         const avatarY = cardY + 32;
 
-        // Gradient avatar
-        const avatarGradient = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
-        avatarGradient.addColorStop(0, '#00d4ff');
-        avatarGradient.addColorStop(1, '#a78bfa');
-        ctx.fillStyle = avatarGradient;
+        ctx.save();
         ctx.beginPath();
         ctx.arc(avatarX + avatarSize/2, avatarY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.closePath();
+        ctx.clip();
 
-        // Avatar letter
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 28px Outfit, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillText('E', avatarX + avatarSize/2, avatarY + avatarSize/2 + 2);
+        if (profileImg) {
+            ctx.drawImage(profileImg, avatarX, avatarY, avatarSize, avatarSize);
+        } else {
+            const avatarGradient = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
+            avatarGradient.addColorStop(0, '#00d4ff');
+            avatarGradient.addColorStop(1, '#a78bfa');
+            ctx.fillStyle = avatarGradient;
+            ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
+            ctx.restore();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(PROFILE.name[0] || 'E', avatarX + avatarSize/2, avatarY + avatarSize/2 + 2);
+        }
+        ctx.restore();
 
         // Name and handle
         ctx.textAlign = 'left';
         ctx.fillStyle = theme.text;
         ctx.font = 'bold 22px Outfit, sans-serif';
-        ctx.fillText('EdgeOfICT', avatarX + avatarSize + 16, avatarY + 22);
+        ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 16, avatarY + 22);
 
         ctx.fillStyle = theme.secondary;
         ctx.font = '18px Outfit, sans-serif';
-        ctx.fillText('@edgeofict', avatarX + avatarSize + 16, avatarY + 48);
+        ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 16, avatarY + 48);
 
         // Content
         const contentX = cardX + 32;
@@ -2067,6 +2172,210 @@ DASHBOARD_TEMPLATE = """
     function postToBluesky() {
         showToast('Bluesky integration coming soon! Download image for now.');
         downloadImage();
+    }
+
+    // Generate tweet image for a given content (returns canvas)
+    async function generateTweetCanvas(content) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const dim = { width: 1080, height: 1080 };
+        const theme = { bg: '#ffffff', text: '#000000', secondary: '#536471', accent: '#1d9bf0' };
+        const profileImg = profileImageLoaded ? await profileImageLoaded : null;
+
+        canvas.width = dim.width;
+        canvas.height = dim.height;
+
+        // White background
+        ctx.fillStyle = theme.bg;
+        ctx.fillRect(0, 0, dim.width, dim.height);
+
+        // Card
+        const cardMargin = dim.width * 0.08;
+        const cardWidth = dim.width - (cardMargin * 2);
+        const cardX = cardMargin;
+        const cardY = dim.height * 0.15;
+        const cardHeight = dim.height * 0.7;
+
+        ctx.fillStyle = '#ffffff';
+        ctx.shadowColor = 'rgba(0,0,0,0.15)';
+        ctx.shadowBlur = 40;
+        ctx.shadowOffsetY = 10;
+        roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 24);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+
+        // Avatar
+        const avatarSize = 56;
+        const avatarX = cardX + 32;
+        const avatarY = cardY + 32;
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(avatarX + avatarSize/2, avatarY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+        ctx.closePath();
+        ctx.clip();
+
+        if (profileImg) {
+            ctx.drawImage(profileImg, avatarX, avatarY, avatarSize, avatarSize);
+        } else {
+            const avatarGradient = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
+            avatarGradient.addColorStop(0, '#00d4ff');
+            avatarGradient.addColorStop(1, '#a78bfa');
+            ctx.fillStyle = avatarGradient;
+            ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
+            ctx.restore();
+            ctx.fillStyle = '#ffffff';
+            ctx.font = 'bold 28px Outfit, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(PROFILE.name[0] || 'E', avatarX + avatarSize/2, avatarY + avatarSize/2 + 2);
+        }
+        ctx.restore();
+
+        // Name and handle
+        ctx.textAlign = 'left';
+        ctx.fillStyle = theme.text;
+        ctx.font = 'bold 22px Outfit, sans-serif';
+        ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 16, avatarY + 22);
+
+        ctx.fillStyle = theme.secondary;
+        ctx.font = '18px Outfit, sans-serif';
+        ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 16, avatarY + 48);
+
+        // Content
+        const contentX = cardX + 32;
+        const contentY = avatarY + avatarSize + 40;
+        const maxWidth = cardWidth - 64;
+
+        ctx.fillStyle = theme.text;
+        ctx.font = '26px Outfit, sans-serif';
+
+        const lines = wrapText(ctx, content, maxWidth);
+        let y = contentY;
+        lines.forEach(line => {
+            const parts = line.split(/(#\\w+)/g);
+            let x = contentX;
+            parts.forEach(part => {
+                if (part.startsWith('#')) {
+                    ctx.fillStyle = theme.accent;
+                } else {
+                    ctx.fillStyle = theme.text;
+                }
+                ctx.fillText(part, x, y);
+                x += ctx.measureText(part).width;
+            });
+            y += 36;
+        });
+
+        return canvas;
+    }
+
+    // Post to Instagram from modal (generates image, uploads to Cloudinary, posts)
+    async function postToInstagramFromModal() {
+        const btn = document.getElementById('btn-post-instagram');
+        const content = btn.dataset.content;
+
+        if (!content) {
+            showToast('No content to post', true);
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Generating...';
+
+        try {
+            // Generate image
+            const canvas = await generateTweetCanvas(content);
+            const imageData = canvas.toDataURL('image/png');
+
+            btn.textContent = 'Uploading...';
+
+            // Upload to Cloudinary
+            const uploadResp = await fetch('/api/cloudinary/upload', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({image: imageData})
+            });
+            const uploadData = await uploadResp.json();
+
+            if (!uploadResp.ok || !uploadData.secure_url) {
+                throw new Error(uploadData.error || 'Failed to upload image');
+            }
+
+            btn.textContent = 'Posting...';
+
+            // Post to Instagram
+            const postResp = await fetch('/api/post/instagram', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    image_url: uploadData.secure_url,
+                    caption: content
+                })
+            });
+            const postData = await postResp.json();
+
+            if (!postResp.ok || !postData.success) {
+                throw new Error(postData.error || 'Failed to post to Instagram');
+            }
+
+            btn.textContent = '✓ Posted!';
+            btn.style.background = '#22c55e';
+            showToast('Posted to Instagram!');
+
+            setTimeout(() => {
+                btn.textContent = '📷 Instagram';
+                btn.style.background = '';
+                btn.disabled = false;
+            }, 3000);
+
+        } catch (err) {
+            btn.textContent = '📷 Instagram';
+            btn.disabled = false;
+            showToast(err.message || 'Failed to post to Instagram', true);
+        }
+    }
+
+    // Post to Facebook from modal (posts text)
+    async function postToFacebookFromModal() {
+        const btn = document.getElementById('btn-post-facebook');
+        const content = btn.dataset.content;
+
+        if (!content) {
+            showToast('No content to post', true);
+            return;
+        }
+
+        btn.disabled = true;
+        btn.textContent = 'Posting...';
+
+        try {
+            const resp = await fetch('/api/post/facebook', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({content: content})
+            });
+
+            const data = await resp.json();
+
+            if (resp.ok && data.success) {
+                btn.textContent = '✓ Posted!';
+                btn.style.background = '#22c55e';
+                showToast('Posted to Facebook!');
+
+                setTimeout(() => {
+                    btn.textContent = '📘 Facebook';
+                    btn.style.background = '';
+                    btn.disabled = false;
+                }, 3000);
+            } else {
+                throw new Error(data.error || 'Failed to post');
+            }
+        } catch (err) {
+            btn.textContent = '📘 Facebook';
+            btn.disabled = false;
+            showToast(err.message || 'Failed to post to Facebook', true);
+        }
     }
 
     function showToast(msg, isError) {
@@ -2353,7 +2662,8 @@ def dashboard():
         approved_posts=approved_posts,
         pending_posts=pending_posts,
         posted_posts=posted_posts,
-        stats=stats
+        stats=stats,
+        profile=PROFILE_CONFIG
     )
 
 
