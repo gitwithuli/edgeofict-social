@@ -1,8 +1,8 @@
 """Cloudinary image upload client."""
 import os
-import base64
 import hashlib
 import time
+from datetime import datetime, timedelta
 import requests
 
 
@@ -80,7 +80,6 @@ class CloudinaryClient:
         if not self.is_configured():
             return {'configured': False, 'error': 'Credentials not set'}
 
-        # Try to ping the API
         try:
             url = f'https://api.cloudinary.com/v1_1/{self.cloud_name}/resources/image'
             response = requests.get(url, auth=(self.api_key, self.api_secret))
@@ -94,3 +93,73 @@ class CloudinaryClient:
                 return {'configured': False, 'error': 'Invalid credentials'}
         except Exception as e:
             return {'configured': False, 'error': str(e)}
+
+    def cleanup_old_images(self, folder='edgeofict', days=14):
+        """Delete images older than specified days from a folder."""
+        if not self.is_configured():
+            return {'success': False, 'error': 'Credentials not configured'}
+
+        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        deleted = []
+        errors = []
+        next_cursor = None
+
+        try:
+            while True:
+                url = f'https://api.cloudinary.com/v1_1/{self.cloud_name}/resources/image/upload'
+                params = {'prefix': folder, 'max_results': 100}
+                if next_cursor:
+                    params['next_cursor'] = next_cursor
+
+                response = requests.get(url, params=params, auth=(self.api_key, self.api_secret))
+                data = response.json()
+
+                if 'error' in data:
+                    return {'success': False, 'error': data['error'].get('message')}
+
+                for resource in data.get('resources', []):
+                    created_at = datetime.fromisoformat(resource['created_at'].replace('Z', '+00:00'))
+                    created_at = created_at.replace(tzinfo=None)
+
+                    if created_at < cutoff_date:
+                        public_id = resource['public_id']
+                        delete_result = self._delete_resource(public_id)
+                        if delete_result:
+                            deleted.append(public_id)
+                        else:
+                            errors.append(public_id)
+
+                next_cursor = data.get('next_cursor')
+                if not next_cursor:
+                    break
+
+            return {
+                'success': True,
+                'deleted_count': len(deleted),
+                'deleted': deleted,
+                'errors': errors
+            }
+
+        except Exception as e:
+            return {'success': False, 'error': str(e)}
+
+    def _delete_resource(self, public_id):
+        """Delete a single resource by public_id."""
+        try:
+            timestamp = int(time.time())
+            params = {'public_id': public_id, 'timestamp': timestamp}
+            signature = self._generate_signature(params)
+
+            url = f'https://api.cloudinary.com/v1_1/{self.cloud_name}/image/destroy'
+            payload = {
+                'public_id': public_id,
+                'api_key': self.api_key,
+                'timestamp': timestamp,
+                'signature': signature
+            }
+
+            response = requests.post(url, data=payload)
+            data = response.json()
+            return data.get('result') == 'ok'
+        except:
+            return False

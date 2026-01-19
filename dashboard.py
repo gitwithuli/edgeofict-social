@@ -3064,6 +3064,31 @@ def verify_cloudinary():
         return jsonify({'configured': False, 'error': str(e)})
 
 
+@app.route('/api/cloudinary/cleanup', methods=['POST'])
+def cleanup_cloudinary():
+    """Delete images older than specified days. Use via cron job."""
+    data = request.json or {}
+    days = data.get('days', 14)
+    secret = data.get('secret')
+
+    cleanup_secret = os.getenv('CLEANUP_SECRET')
+    if cleanup_secret and secret != cleanup_secret:
+        return jsonify({'error': 'Invalid secret'}), 401
+
+    try:
+        from integrations.cloudinary_client import CloudinaryClient
+        client = CloudinaryClient()
+
+        if not client.is_configured():
+            return jsonify({'error': 'Cloudinary not configured'}), 500
+
+        result = client.cleanup_old_images(days=days)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'error': f'Cleanup failed: {str(e)}'}), 500
+
+
 @app.route('/api/post/social', methods=['POST'])
 def post_to_social():
     """Post to Facebook and Instagram with image.
