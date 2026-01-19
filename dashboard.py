@@ -531,6 +531,248 @@ DASHBOARD_TEMPLATE = """
             color: #fff;
         }
 
+        /* Image Generator */
+        .btn-generate-img {
+            display: inline-block;
+            background: linear-gradient(135deg, #E1306C, #F77737);
+            color: #fff;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 20px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            margin-left: 0.5rem;
+        }
+        .btn-generate-img:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 15px rgba(225, 48, 108, 0.4);
+        }
+
+        .image-generator-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.92);
+            backdrop-filter: blur(10px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10001;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+        .image-generator-modal.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .img-gen-panel {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border-bright);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 900px;
+            max-height: 95vh;
+            overflow-y: auto;
+            padding: 1.5rem;
+        }
+
+        .img-gen-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .img-gen-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .img-gen-close {
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .img-gen-close:hover {
+            background: rgba(255,255,255,0.08);
+            color: var(--text-primary);
+        }
+
+        .img-gen-content {
+            display: grid;
+            grid-template-columns: 1fr 280px;
+            gap: 1.5rem;
+        }
+
+        .img-preview-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #1a1a1a;
+            border-radius: 12px;
+            padding: 1rem;
+            min-height: 400px;
+        }
+
+        #tweetCanvas {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }
+
+        .img-gen-controls {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+        }
+
+        .control-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .control-label {
+            font-size: 0.75rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .theme-options {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+
+        .theme-btn {
+            padding: 0.6rem;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .theme-btn:hover {
+            border-color: var(--accent-cyan);
+        }
+        .theme-btn.active {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .theme-btn.light { background: #fff; color: #000; }
+        .theme-btn.dark { background: #15202b; color: #fff; }
+        .theme-btn.gradient1 { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
+        .theme-btn.gradient2 { background: linear-gradient(135deg, #00d4ff, #a78bfa); color: #000; }
+
+        .dimension-options {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .dim-btn {
+            flex: 1;
+            padding: 0.5rem;
+            border-radius: 8px;
+            border: 2px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .dim-btn:hover { border-color: var(--accent-cyan); }
+        .dim-btn.active {
+            border-color: var(--accent-cyan);
+            background: rgba(0, 212, 255, 0.1);
+        }
+
+        .img-gen-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: auto;
+            padding-top: 1rem;
+        }
+
+        .btn-download {
+            width: 100%;
+            padding: 0.875rem;
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border: none;
+            border-radius: 10px;
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+        .btn-download:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0, 212, 255, 0.3);
+        }
+
+        .share-buttons {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 0.5rem;
+        }
+
+        .btn-share {
+            padding: 0.6rem;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+        }
+        .btn-share:hover {
+            border-color: var(--text-secondary);
+            background: var(--bg-elevated);
+        }
+        .btn-share.instagram { border-color: #E1306C; color: #E1306C; }
+        .btn-share.instagram:hover { background: rgba(225, 48, 108, 0.1); }
+        .btn-share.bluesky { border-color: #0085ff; color: #0085ff; }
+        .btn-share.bluesky:hover { background: rgba(0, 133, 255, 0.1); }
+        .btn-share.linkedin { border-color: #0A66C2; color: #0A66C2; }
+        .btn-share.linkedin:hover { background: rgba(10, 102, 194, 0.1); }
+        .btn-share.facebook { border-color: #1877F2; color: #1877F2; }
+        .btn-share.facebook:hover { background: rgba(24, 119, 242, 0.1); }
+
         /* Create Button */
         .btn-create {
             display: flex;
@@ -1044,15 +1286,70 @@ DASHBOARD_TEMPLATE = """
             </div>
             <div class="modal-status">
                 <span class="status-label" id="modal-status"></span>
-                <a class="btn-post-x" id="btn-post-x" href="#" target="_blank" style="display:none;text-decoration:none;">
-                    Post to 𝕏 ↗
-                </a>
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <a class="btn-post-x" id="btn-post-x" href="#" target="_blank" style="display:none;text-decoration:none;">
+                        Post to 𝕏 ↗
+                    </a>
+                    <button class="btn-generate-img" id="btn-generate-img" onclick="openImageGenerator()" style="display:none;">
+                        📸 Create Image
+                    </button>
+                </div>
                 <span id="modal-source" style="color: #71767b; font-size: 0.85rem;"></span>
             </div>
         </div>
     </div>
 
     <div class="toast" id="toast"></div>
+
+    <!-- Image Generator Modal -->
+    <div class="image-generator-modal" id="imageGenModal">
+        <div class="img-gen-panel">
+            <div class="img-gen-header">
+                <span class="img-gen-title">Generate Image for Socials</span>
+                <button class="img-gen-close" onclick="closeImageGenerator()">&times;</button>
+            </div>
+            <div class="img-gen-content">
+                <div class="img-preview-container">
+                    <canvas id="tweetCanvas" width="1080" height="1080"></canvas>
+                </div>
+                <div class="img-gen-controls">
+                    <div class="control-group">
+                        <span class="control-label">Theme</span>
+                        <div class="theme-options">
+                            <button class="theme-btn light active" data-theme="light" onclick="setTheme('light')">Light</button>
+                            <button class="theme-btn dark" data-theme="dark" onclick="setTheme('dark')">Dark</button>
+                            <button class="theme-btn gradient1" data-theme="gradient1" onclick="setTheme('gradient1')">Purple</button>
+                            <button class="theme-btn gradient2" data-theme="gradient2" onclick="setTheme('gradient2')">Cyan</button>
+                        </div>
+                    </div>
+                    <div class="control-group">
+                        <span class="control-label">Dimension</span>
+                        <div class="dimension-options">
+                            <button class="dim-btn active" data-dim="square" onclick="setDimension('square')">Square</button>
+                            <button class="dim-btn" data-dim="story" onclick="setDimension('story')">Story</button>
+                            <button class="dim-btn" data-dim="wide" onclick="setDimension('wide')">Wide</button>
+                        </div>
+                    </div>
+                    <div class="img-gen-actions">
+                        <button class="btn-download" onclick="downloadImage()">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="7 10 12 15 17 10"/>
+                                <line x1="12" y1="15" x2="12" y2="3"/>
+                            </svg>
+                            Download PNG
+                        </button>
+                        <div class="share-buttons">
+                            <button class="btn-share instagram" onclick="openInstagram()">📷 Instagram</button>
+                            <button class="btn-share bluesky" onclick="postToBluesky()">🦋 Bluesky</button>
+                            <button class="btn-share linkedin" onclick="openLinkedIn()">💼 LinkedIn</button>
+                            <button class="btn-share facebook" onclick="openFacebook()">📘 Facebook</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Upload Modal -->
     <div class="upload-modal" id="uploadModal">
@@ -1200,19 +1497,20 @@ DASHBOARD_TEMPLATE = """
             document.getElementById('modal-source').textContent = card.querySelector('.tag-source')?.textContent || '';
             document.getElementById('modal-time').textContent = new Date().toLocaleString('en-US', {hour:'numeric', minute:'2-digit', month:'short', day:'numeric', year:'numeric'});
 
-            // Show "Post to X" button for approved/pending posts (opens Twitter intent)
+            // Show "Post to X" button and "Create Image" button
             const postBtn = document.getElementById('btn-post-x');
-            if (type === 'post' && (status === 'approved' || status === 'pending')) {
+            const imgBtn = document.getElementById('btn-generate-img');
+
+            if (type === 'post' || type === 'quote') {
                 const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(content);
                 postBtn.href = tweetUrl;
                 postBtn.style.display = 'block';
-            } else if (type === 'quote') {
-                // Also allow for quotes preview
-                const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(content);
-                postBtn.href = tweetUrl;
-                postBtn.style.display = 'block';
+                imgBtn.style.display = 'block';
+                // Store content for image generator
+                imgBtn.dataset.content = content;
             } else {
                 postBtn.style.display = 'none';
+                imgBtn.style.display = 'none';
             }
 
             document.getElementById('modal').classList.add('show');
@@ -1503,6 +1801,259 @@ DASHBOARD_TEMPLATE = """
         document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
         document.addEventListener('dragstart', e => e.preventDefault());
     })();
+
+    // Image Generator
+    let imgGenState = {
+        content: '',
+        theme: 'light',
+        dimension: 'square'
+    };
+
+    const themes = {
+        light: { bg: '#ffffff', text: '#0f1419', secondary: '#536471', accent: '#1d9bf0' },
+        dark: { bg: '#15202b', text: '#ffffff', secondary: '#8b98a5', accent: '#1d9bf0' },
+        gradient1: { bg: 'linear-gradient(135deg, #667eea, #764ba2)', text: '#ffffff', secondary: 'rgba(255,255,255,0.8)', accent: '#ffffff' },
+        gradient2: { bg: 'linear-gradient(135deg, #00d4ff, #a78bfa)', text: '#000000', secondary: 'rgba(0,0,0,0.7)', accent: '#000000' }
+    };
+
+    const dimensions = {
+        square: { width: 1080, height: 1080 },
+        story: { width: 1080, height: 1920 },
+        wide: { width: 1200, height: 675 }
+    };
+
+    function openImageGenerator() {
+        const content = document.getElementById('btn-generate-img').dataset.content;
+        imgGenState.content = content;
+        document.getElementById('imageGenModal').classList.add('show');
+        renderTweetImage();
+    }
+
+    function closeImageGenerator() {
+        document.getElementById('imageGenModal').classList.remove('show');
+    }
+
+    function setTheme(theme) {
+        imgGenState.theme = theme;
+        document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`.theme-btn[data-theme="${theme}"]`).classList.add('active');
+        renderTweetImage();
+    }
+
+    function setDimension(dim) {
+        imgGenState.dimension = dim;
+        document.querySelectorAll('.dim-btn').forEach(b => b.classList.remove('active'));
+        document.querySelector(`.dim-btn[data-dim="${dim}"]`).classList.add('active');
+        renderTweetImage();
+    }
+
+    function renderTweetImage() {
+        const canvas = document.getElementById('tweetCanvas');
+        const ctx = canvas.getContext('2d');
+        const dim = dimensions[imgGenState.dimension];
+        const theme = themes[imgGenState.theme];
+
+        canvas.width = dim.width;
+        canvas.height = dim.height;
+
+        // Background
+        if (theme.bg.includes('gradient')) {
+            const gradient = ctx.createLinearGradient(0, 0, dim.width, dim.height);
+            if (imgGenState.theme === 'gradient1') {
+                gradient.addColorStop(0, '#667eea');
+                gradient.addColorStop(1, '#764ba2');
+            } else {
+                gradient.addColorStop(0, '#00d4ff');
+                gradient.addColorStop(1, '#a78bfa');
+            }
+            ctx.fillStyle = gradient;
+        } else {
+            ctx.fillStyle = theme.bg;
+        }
+        ctx.fillRect(0, 0, dim.width, dim.height);
+
+        // Card background
+        const cardMargin = dim.width * 0.08;
+        const cardWidth = dim.width - (cardMargin * 2);
+        const cardX = cardMargin;
+        const cardY = dim.height * 0.15;
+        const cardHeight = dim.height * 0.7;
+
+        ctx.fillStyle = imgGenState.theme === 'light' ? '#ffffff' : 'rgba(255,255,255,0.1)';
+        ctx.shadowColor = 'rgba(0,0,0,0.15)';
+        ctx.shadowBlur = 40;
+        ctx.shadowOffsetY = 10;
+        roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 24);
+        ctx.fill();
+        ctx.shadowColor = 'transparent';
+
+        // Avatar
+        const avatarSize = 56;
+        const avatarX = cardX + 32;
+        const avatarY = cardY + 32;
+
+        // Gradient avatar
+        const avatarGradient = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
+        avatarGradient.addColorStop(0, '#00d4ff');
+        avatarGradient.addColorStop(1, '#a78bfa');
+        ctx.fillStyle = avatarGradient;
+        ctx.beginPath();
+        ctx.arc(avatarX + avatarSize/2, avatarY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Avatar letter
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 28px Outfit, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('E', avatarX + avatarSize/2, avatarY + avatarSize/2 + 2);
+
+        // Name and handle
+        ctx.textAlign = 'left';
+        ctx.fillStyle = theme.text;
+        ctx.font = 'bold 22px Outfit, sans-serif';
+        ctx.fillText('EdgeOfICT', avatarX + avatarSize + 16, avatarY + 22);
+
+        ctx.fillStyle = theme.secondary;
+        ctx.font = '18px Outfit, sans-serif';
+        ctx.fillText('@edgeofict', avatarX + avatarSize + 16, avatarY + 48);
+
+        // Content
+        const contentX = cardX + 32;
+        const contentY = avatarY + avatarSize + 40;
+        const maxWidth = cardWidth - 64;
+
+        ctx.fillStyle = theme.text;
+        ctx.font = '26px Outfit, sans-serif';
+
+        const lines = wrapText(ctx, imgGenState.content, maxWidth);
+        let y = contentY;
+        lines.forEach(line => {
+            // Highlight hashtags
+            const parts = line.split(/(#\\w+)/g);
+            let x = contentX;
+            parts.forEach(part => {
+                if (part.startsWith('#')) {
+                    ctx.fillStyle = theme.accent;
+                } else {
+                    ctx.fillStyle = theme.text;
+                }
+                ctx.fillText(part, x, y);
+                x += ctx.measureText(part).width;
+            });
+            y += 36;
+        });
+
+        // Branding
+        ctx.fillStyle = theme.secondary;
+        ctx.font = '16px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('edgeofict.com', dim.width / 2, dim.height - 40);
+    }
+
+    function roundRect(ctx, x, y, w, h, r) {
+        ctx.beginPath();
+        ctx.moveTo(x + r, y);
+        ctx.lineTo(x + w - r, y);
+        ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+        ctx.lineTo(x + w, y + h - r);
+        ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+        ctx.lineTo(x + r, y + h);
+        ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+        ctx.lineTo(x, y + r);
+        ctx.quadraticCurveTo(x, y, x + r, y);
+        ctx.closePath();
+    }
+
+    function wrapText(ctx, text, maxWidth) {
+        const words = text.split(' ');
+        const lines = [];
+        let currentLine = '';
+
+        words.forEach(word => {
+            // Handle newlines
+            if (word.includes('\\n')) {
+                const parts = word.split('\\n');
+                parts.forEach((part, i) => {
+                    if (i > 0) {
+                        lines.push(currentLine.trim());
+                        currentLine = '';
+                    }
+                    const testLine = currentLine + part + ' ';
+                    if (ctx.measureText(testLine).width > maxWidth && currentLine !== '') {
+                        lines.push(currentLine.trim());
+                        currentLine = part + ' ';
+                    } else {
+                        currentLine = testLine;
+                    }
+                });
+            } else {
+                const testLine = currentLine + word + ' ';
+                if (ctx.measureText(testLine).width > maxWidth && currentLine !== '') {
+                    lines.push(currentLine.trim());
+                    currentLine = word + ' ';
+                } else {
+                    currentLine = testLine;
+                }
+            }
+        });
+        if (currentLine.trim()) lines.push(currentLine.trim());
+        return lines;
+    }
+
+    function downloadImage() {
+        const canvas = document.getElementById('tweetCanvas');
+        const link = document.createElement('a');
+        link.download = 'edgeofict-' + Date.now() + '.png';
+        link.href = canvas.toDataURL('image/png');
+        link.click();
+        showToast('Image downloaded!');
+    }
+
+    function openInstagram() {
+        downloadImage();
+        setTimeout(() => {
+            window.open('https://www.instagram.com/', '_blank');
+            showToast('Image downloaded. Upload it to Instagram.');
+        }, 500);
+    }
+
+    function openLinkedIn() {
+        const text = imgGenState.content;
+        window.open('https://www.linkedin.com/feed/?shareActive=true', '_blank');
+        showToast('Paste your content and upload the image on LinkedIn.');
+        downloadImage();
+    }
+
+    function openFacebook() {
+        window.open('https://www.facebook.com/', '_blank');
+        showToast('Image downloaded. Share it on Facebook.');
+        downloadImage();
+    }
+
+    function postToBluesky() {
+        showToast('Bluesky integration coming soon! Download image for now.');
+        downloadImage();
+    }
+
+    function showToast(msg, isError) {
+        const t = document.getElementById('toast');
+        t.textContent = msg;
+        t.className = 'toast show' + (isError ? ' error' : '');
+        setTimeout(() => t.className = 'toast', 2500);
+    }
+
+    // Close image generator on backdrop click
+    document.getElementById('imageGenModal').addEventListener('click', e => {
+        if (e.target.id === 'imageGenModal') closeImageGenerator();
+    });
+
+    // Escape key for image generator
+    document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && document.getElementById('imageGenModal').classList.contains('show')) {
+            closeImageGenerator();
+        }
+    });
 
 
     // Upload Modal Functions (outside IIFE to be globally accessible)
