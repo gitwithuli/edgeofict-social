@@ -2067,12 +2067,11 @@ DASHBOARD_TEMPLATE = """
             ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 15, profileY + 48);
 
         } else {
-            // CARD STYLE (brand, dark): Dynamic height card
-            const avatarSize = 100;
-            const cardPadding = 40;
-            const headerHeight = avatarSize + 30;
-            const signatureHeight = 60;
-            const cardHeight = headerHeight + textHeight + signatureHeight + cardPadding * 2 + 20;
+            // CARD STYLE (brand, dark): Center-aligned for link preview compatibility
+            const avatarSize = 80;
+            const cardPadding = 50;
+            const signatureHeight = 50;
+            const cardHeight = textHeight + signatureHeight + cardPadding * 2 + 60;
             const cardY = (dim.height - cardHeight) / 2;
 
             // Card with glassmorphism effect
@@ -2090,32 +2089,32 @@ DASHBOARD_TEMPLATE = """
             ctx.roundRect(padding, cardY, contentWidth, 4, [24, 24, 0, 0]);
             ctx.fill();
 
-            // Avatar
-            const avatarX = padding + cardPadding;
-            const avatarY = cardY + cardPadding + 10;
-            drawAvatar(ctx, profileImg, avatarX, avatarY, avatarSize, theme);
-
-            // Name and handle
-            ctx.textAlign = 'left';
-            ctx.fillStyle = theme.text;
-            ctx.font = 'bold 28px Outfit, sans-serif';
-            ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 20, avatarY + 38);
-            ctx.fillStyle = theme.secondary;
-            ctx.font = '22px Outfit, sans-serif';
-            ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 20, avatarY + 70);
-
-            // Quote text
+            // Quote text - centered for better link preview visibility
             ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
-            let y = avatarY + avatarSize + 50;
+            ctx.textAlign = 'center';
+            let y = cardY + cardPadding + 40;
             lines.forEach(line => {
-                drawTextWithHashtags(ctx, line, padding + cardPadding, y, theme, 'left');
+                drawTextWithHashtags(ctx, line, dim.width / 2, y, theme, 'center');
                 y += lineHeight;
             });
 
-            // Signature line
+            // Signature line - centered
             ctx.fillStyle = theme.accent;
-            ctx.font = 'italic 600 28px Outfit, sans-serif';
-            ctx.fillText('Track your edge.', padding + cardPadding, y + 30);
+            ctx.font = 'italic 600 26px Outfit, sans-serif';
+            ctx.fillText('Track your edge.', dim.width / 2, y + 25);
+
+            // Profile row at bottom of card - centered
+            const profileRowY = cardY + cardHeight - 70;
+            const avatarX = dim.width / 2 - avatarSize / 2 - 90;
+            drawAvatar(ctx, profileImg, avatarX, profileRowY, avatarSize, theme);
+
+            ctx.textAlign = 'left';
+            ctx.fillStyle = theme.text;
+            ctx.font = 'bold 24px Outfit, sans-serif';
+            ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 15, profileRowY + 30);
+            ctx.fillStyle = theme.secondary;
+            ctx.font = '18px Outfit, sans-serif';
+            ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 15, profileRowY + 55);
 
             // Branding below card
             ctx.fillStyle = theme.accent;
@@ -2319,12 +2318,11 @@ DASHBOARD_TEMPLATE = """
         const lines = wrapText(ctx, cleanContent, contentWidth - 80);
         const textHeight = lines.length * lineHeight;
 
-        // Dynamic card
-        const avatarSize = 100;
-        const cardPadding = 40;
-        const headerHeight = avatarSize + 30;
-        const signatureHeight = 60;
-        const cardHeight = headerHeight + textHeight + signatureHeight + cardPadding * 2 + 20;
+        // Dynamic card - centered layout for link preview compatibility
+        const avatarSize = 80;
+        const cardPadding = 50;
+        const signatureHeight = 50;
+        const cardHeight = textHeight + signatureHeight + cardPadding * 2 + 60;
         const cardY = (dim.height - cardHeight) / 2;
 
         // Card with glassmorphism
@@ -2342,33 +2340,33 @@ DASHBOARD_TEMPLATE = """
         ctx.roundRect(padding, cardY, contentWidth, 4, [24, 24, 0, 0]);
         ctx.fill();
 
-        // Avatar
-        const avatarX = padding + cardPadding;
-        const avatarY = cardY + cardPadding + 10;
-        drawAvatar(ctx, profileImg, avatarX, avatarY, avatarSize, theme);
-
-        // Name and handle
-        ctx.textAlign = 'left';
-        ctx.fillStyle = theme.text;
-        ctx.font = 'bold 28px Outfit, sans-serif';
-        ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 20, avatarY + 38);
-        ctx.fillStyle = theme.secondary;
-        ctx.font = '22px Outfit, sans-serif';
-        ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 20, avatarY + 70);
-
-        // Quote text
+        // Quote text - centered for better link preview visibility
         ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
-        let y = avatarY + avatarSize + 50;
+        ctx.textAlign = 'center';
+        let y = cardY + cardPadding + 40;
         lines.forEach(line => {
             ctx.fillStyle = theme.text;
-            ctx.fillText(line, padding + cardPadding, y);
+            ctx.fillText(line, dim.width / 2, y);
             y += lineHeight;
         });
 
-        // Signature line
+        // Signature line - centered
         ctx.fillStyle = theme.accent;
-        ctx.font = 'italic 600 28px Outfit, sans-serif';
-        ctx.fillText('Track your edge.', padding + cardPadding, y + 30);
+        ctx.font = 'italic 600 26px Outfit, sans-serif';
+        ctx.fillText('Track your edge.', dim.width / 2, y + 25);
+
+        // Profile row at bottom of card - centered
+        const profileRowY = cardY + cardHeight - 70;
+        const avatarX = dim.width / 2 - avatarSize / 2 - 90;
+        drawAvatar(ctx, profileImg, avatarX, profileRowY, avatarSize, theme);
+
+        ctx.textAlign = 'left';
+        ctx.fillStyle = theme.text;
+        ctx.font = 'bold 24px Outfit, sans-serif';
+        ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 15, profileRowY + 30);
+        ctx.fillStyle = theme.secondary;
+        ctx.font = '18px Outfit, sans-serif';
+        ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 15, profileRowY + 55);
 
         // Branding
         ctx.fillStyle = theme.accent;
