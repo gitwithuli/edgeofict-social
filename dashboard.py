@@ -745,10 +745,10 @@ DASHBOARD_TEMPLATE = """
             background: rgba(0, 212, 255, 0.1);
         }
 
-        .theme-btn.light { background: #fff; color: #000; }
-        .theme-btn.dark { background: #15202b; color: #fff; }
-        .theme-btn.gradient1 { background: linear-gradient(135deg, #667eea, #764ba2); color: #fff; }
-        .theme-btn.gradient2 { background: linear-gradient(135deg, #00d4ff, #a78bfa); color: #000; }
+        .theme-btn.brand { background: #1a3a2f; color: #c9a227; }
+        .theme-btn.minimal { background: #fafafa; color: #1a1a1a; }
+        .theme-btn.bold { background: linear-gradient(135deg, #1a3a2f, #0d1f17); color: #c9a227; }
+        .theme-btn.dark { background: #0d1117; color: #e6edf3; }
 
         .dimension-options {
             display: flex;
@@ -1387,10 +1387,10 @@ DASHBOARD_TEMPLATE = """
                     <div class="control-group">
                         <span class="control-label">Theme</span>
                         <div class="theme-options">
-                            <button class="theme-btn light active" data-theme="light" onclick="setTheme('light')">Light</button>
+                            <button class="theme-btn brand active" data-theme="brand" onclick="setTheme('brand')">Brand</button>
+                            <button class="theme-btn minimal" data-theme="minimal" onclick="setTheme('minimal')">Minimal</button>
+                            <button class="theme-btn bold" data-theme="bold" onclick="setTheme('bold')">Bold</button>
                             <button class="theme-btn dark" data-theme="dark" onclick="setTheme('dark')">Dark</button>
-                            <button class="theme-btn gradient1" data-theme="gradient1" onclick="setTheme('gradient1')">Purple</button>
-                            <button class="theme-btn gradient2" data-theme="gradient2" onclick="setTheme('gradient2')">Cyan</button>
                         </div>
                     </div>
                     <div class="control-group">
@@ -1905,15 +1905,15 @@ DASHBOARD_TEMPLATE = """
     // Image Generator
     let imgGenState = {
         content: '',
-        theme: 'light',
+        theme: 'brand',
         dimension: 'square'
     };
 
     const themes = {
-        light: { bg: '#ffffff', text: '#0f1419', secondary: '#536471', accent: '#1d9bf0' },
-        dark: { bg: '#15202b', text: '#ffffff', secondary: '#8b98a5', accent: '#1d9bf0' },
-        gradient1: { bg: 'linear-gradient(135deg, #667eea, #764ba2)', text: '#ffffff', secondary: 'rgba(255,255,255,0.8)', accent: '#ffffff' },
-        gradient2: { bg: 'linear-gradient(135deg, #00d4ff, #a78bfa)', text: '#000000', secondary: 'rgba(0,0,0,0.7)', accent: '#000000' }
+        brand: { bg: '#1a3a2f', text: '#f5f0e6', secondary: '#a8b5a0', accent: '#c9a227', card: 'rgba(255,255,255,0.08)', style: 'card' },
+        minimal: { bg: '#fafafa', text: '#1a1a1a', secondary: '#666666', accent: '#1a3a2f', card: '#ffffff', style: 'centered' },
+        bold: { bg: 'gradient-brand', text: '#f5f0e6', secondary: '#c9a227', accent: '#c9a227', card: 'none', style: 'fullbleed' },
+        dark: { bg: '#0d1117', text: '#e6edf3', secondary: '#8b949e', accent: '#c9a227', card: 'rgba(255,255,255,0.06)', style: 'card' }
     };
 
     const dimensions = {
@@ -1953,110 +1953,200 @@ DASHBOARD_TEMPLATE = """
         const dim = dimensions[imgGenState.dimension];
         const theme = themes[imgGenState.theme];
         const profileImg = profileImageLoaded ? await profileImageLoaded : null;
+        const style = theme.style;
 
         canvas.width = dim.width;
         canvas.height = dim.height;
 
         // Background
-        if (theme.bg.includes('gradient')) {
+        if (theme.bg === 'gradient-brand') {
             const gradient = ctx.createLinearGradient(0, 0, dim.width, dim.height);
-            if (imgGenState.theme === 'gradient1') {
-                gradient.addColorStop(0, '#667eea');
-                gradient.addColorStop(1, '#764ba2');
-            } else {
-                gradient.addColorStop(0, '#00d4ff');
-                gradient.addColorStop(1, '#a78bfa');
-            }
+            gradient.addColorStop(0, '#1a3a2f');
+            gradient.addColorStop(0.5, '#0d1f17');
+            gradient.addColorStop(1, '#1a3a2f');
             ctx.fillStyle = gradient;
         } else {
             ctx.fillStyle = theme.bg;
         }
         ctx.fillRect(0, 0, dim.width, dim.height);
 
-        // Card background
-        const cardMargin = dim.width * 0.08;
-        const cardWidth = dim.width - (cardMargin * 2);
-        const cardX = cardMargin;
-        const cardY = dim.height * 0.15;
-        const cardHeight = dim.height * 0.7;
+        // Add subtle texture/pattern for brand themes
+        if (imgGenState.theme === 'brand' || imgGenState.theme === 'bold') {
+            ctx.globalAlpha = 0.03;
+            for (let i = 0; i < dim.width; i += 60) {
+                for (let j = 0; j < dim.height; j += 60) {
+                    ctx.fillStyle = '#c9a227';
+                    ctx.fillRect(i, j, 1, 1);
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
 
-        ctx.fillStyle = imgGenState.theme === 'light' ? '#ffffff' : 'rgba(255,255,255,0.1)';
-        ctx.shadowColor = 'rgba(0,0,0,0.15)';
-        ctx.shadowBlur = 40;
-        ctx.shadowOffsetY = 10;
-        roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 24);
-        ctx.fill();
-        ctx.shadowColor = 'transparent';
+        const padding = dim.width * 0.06;
+        const contentWidth = dim.width - (padding * 2);
+        const fontSize = style === 'fullbleed' ? 42 : 36;
+        const lineHeight = fontSize * 1.5;
 
-        // Avatar
-        const avatarSize = 56;
-        const avatarX = cardX + 32;
-        const avatarY = cardY + 32;
+        // Calculate content height first
+        ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
+        const lines = wrapText(ctx, imgGenState.content, contentWidth - 40);
+        const textHeight = lines.length * lineHeight;
 
+        if (style === 'fullbleed') {
+            // BOLD STYLE: No card, large centered text
+            const avatarSize = 100;
+            const startY = (dim.height - (avatarSize + 40 + textHeight + 80)) / 2;
+
+            // Avatar centered
+            const avatarX = (dim.width - avatarSize) / 2;
+            const avatarY = startY;
+            drawAvatar(ctx, profileImg, avatarX, avatarY, avatarSize, theme);
+
+            // Name below avatar
+            ctx.textAlign = 'center';
+            ctx.fillStyle = theme.text;
+            ctx.font = 'bold 28px Outfit, sans-serif';
+            ctx.fillText(PROFILE.name || 'EdgeOfICT', dim.width / 2, avatarY + avatarSize + 35);
+
+            // Quote text - large and centered
+            ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
+            let y = avatarY + avatarSize + 90;
+            lines.forEach(line => {
+                drawTextWithHashtags(ctx, line, dim.width / 2, y, theme, 'center');
+                y += lineHeight;
+            });
+
+            // Bottom branding
+            ctx.fillStyle = theme.accent;
+            ctx.font = '600 20px JetBrains Mono, monospace';
+            ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
+
+        } else if (style === 'centered') {
+            // MINIMAL STYLE: Clean, centered, subtle card
+            const cardPadding = 50;
+            const cardHeight = textHeight + 200;
+            const cardY = (dim.height - cardHeight) / 2;
+
+            // Subtle shadow card
+            ctx.shadowColor = 'rgba(0,0,0,0.08)';
+            ctx.shadowBlur = 60;
+            ctx.shadowOffsetY = 20;
+            ctx.fillStyle = theme.card;
+            roundRect(ctx, padding, cardY, contentWidth, cardHeight, 20);
+            ctx.fill();
+            ctx.shadowColor = 'transparent';
+
+            // Quote text - centered in card
+            ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
+            ctx.textAlign = 'center';
+            let y = cardY + cardPadding + 30;
+            lines.forEach(line => {
+                drawTextWithHashtags(ctx, line, dim.width / 2, y, theme, 'center');
+                y += lineHeight;
+            });
+
+            // Profile at bottom of card
+            const avatarSize = 60;
+            const profileY = cardY + cardHeight - 80;
+            const avatarX = dim.width / 2 - 100;
+            drawAvatar(ctx, profileImg, avatarX, profileY, avatarSize, theme);
+
+            ctx.textAlign = 'left';
+            ctx.fillStyle = theme.text;
+            ctx.font = 'bold 22px Outfit, sans-serif';
+            ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 15, profileY + 25);
+            ctx.fillStyle = theme.secondary;
+            ctx.font = '18px Outfit, sans-serif';
+            ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 15, profileY + 48);
+
+        } else {
+            // CARD STYLE (brand, dark): Dynamic height card
+            const avatarSize = 80;
+            const cardPadding = 40;
+            const headerHeight = avatarSize + 30;
+            const cardHeight = headerHeight + textHeight + cardPadding * 2 + 20;
+            const cardY = (dim.height - cardHeight) / 2;
+
+            // Card with glassmorphism effect
+            ctx.shadowColor = 'rgba(0,0,0,0.3)';
+            ctx.shadowBlur = 50;
+            ctx.shadowOffsetY = 15;
+            ctx.fillStyle = theme.card;
+            roundRect(ctx, padding, cardY, contentWidth, cardHeight, 24);
+            ctx.fill();
+            ctx.shadowColor = 'transparent';
+
+            // Gold accent line at top
+            ctx.fillStyle = theme.accent;
+            ctx.beginPath();
+            ctx.roundRect(padding, cardY, contentWidth, 4, [24, 24, 0, 0]);
+            ctx.fill();
+
+            // Avatar
+            const avatarX = padding + cardPadding;
+            const avatarY = cardY + cardPadding + 10;
+            drawAvatar(ctx, profileImg, avatarX, avatarY, avatarSize, theme);
+
+            // Name and handle
+            ctx.textAlign = 'left';
+            ctx.fillStyle = theme.text;
+            ctx.font = 'bold 26px Outfit, sans-serif';
+            ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 20, avatarY + 32);
+            ctx.fillStyle = theme.secondary;
+            ctx.font = '20px Outfit, sans-serif';
+            ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 20, avatarY + 60);
+
+            // Quote text
+            ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
+            let y = avatarY + avatarSize + 50;
+            lines.forEach(line => {
+                drawTextWithHashtags(ctx, line, padding + cardPadding, y, theme, 'left');
+                y += lineHeight;
+            });
+
+            // Branding below card
+            ctx.fillStyle = theme.accent;
+            ctx.font = '600 18px JetBrains Mono, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
+        }
+    }
+
+    function drawAvatar(ctx, profileImg, x, y, size, theme) {
         ctx.save();
         ctx.beginPath();
-        ctx.arc(avatarX + avatarSize/2, avatarY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
+        ctx.arc(x + size/2, y + size/2, size/2, 0, Math.PI * 2);
         ctx.closePath();
         ctx.clip();
-
         if (profileImg) {
-            ctx.drawImage(profileImg, avatarX, avatarY, avatarSize, avatarSize);
+            ctx.drawImage(profileImg, x, y, size, size);
         } else {
-            const avatarGradient = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
-            avatarGradient.addColorStop(0, '#00d4ff');
-            avatarGradient.addColorStop(1, '#a78bfa');
-            ctx.fillStyle = avatarGradient;
-            ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
-            ctx.restore();
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 28px Outfit, sans-serif';
+            const grad = ctx.createLinearGradient(x, y, x + size, y + size);
+            grad.addColorStop(0, '#1a3a2f');
+            grad.addColorStop(1, '#0d1f17');
+            ctx.fillStyle = grad;
+            ctx.fillRect(x, y, size, size);
+            ctx.fillStyle = '#c9a227';
+            ctx.font = `bold ${size * 0.5}px Outfit, sans-serif`;
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(PROFILE.name[0] || 'E', avatarX + avatarSize/2, avatarY + avatarSize/2 + 2);
+            ctx.fillText(PROFILE.name[0] || 'E', x + size/2, y + size/2);
         }
         ctx.restore();
+    }
 
-        // Name and handle
-        ctx.textAlign = 'left';
-        ctx.fillStyle = theme.text;
-        ctx.font = 'bold 22px Outfit, sans-serif';
-        ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 16, avatarY + 22);
-
-        ctx.fillStyle = theme.secondary;
-        ctx.font = '18px Outfit, sans-serif';
-        ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 16, avatarY + 48);
-
-        // Content
-        const contentX = cardX + 32;
-        const contentY = avatarY + avatarSize + 40;
-        const maxWidth = cardWidth - 64;
-
-        ctx.fillStyle = theme.text;
-        ctx.font = '26px Outfit, sans-serif';
-
-        const lines = wrapText(ctx, imgGenState.content, maxWidth);
-        let y = contentY;
-        lines.forEach(line => {
-            // Highlight hashtags
-            const parts = line.split(/(#\\w+)/g);
-            let x = contentX;
-            parts.forEach(part => {
-                if (part.startsWith('#')) {
-                    ctx.fillStyle = theme.accent;
-                } else {
-                    ctx.fillStyle = theme.text;
-                }
-                ctx.fillText(part, x, y);
-                x += ctx.measureText(part).width;
-            });
-            y += 36;
+    function drawTextWithHashtags(ctx, line, x, y, theme, align) {
+        const parts = line.split(/(#\\w+)/g);
+        if (align === 'center') {
+            const totalWidth = parts.reduce((w, p) => w + ctx.measureText(p).width, 0);
+            x = x - totalWidth / 2;
+        }
+        parts.forEach(part => {
+            ctx.fillStyle = part.startsWith('#') ? theme.accent : theme.text;
+            ctx.textAlign = 'left';
+            ctx.fillText(part, x, y);
+            x += ctx.measureText(part).width;
         });
-
-        // Branding
-        ctx.fillStyle = theme.secondary;
-        ctx.font = '16px JetBrains Mono, monospace';
-        ctx.textAlign = 'center';
-        ctx.fillText('edgeofict.com', dim.width / 2, dim.height - 40);
     }
 
     function roundRect(ctx, x, y, w, h, r) {
@@ -2174,98 +2264,96 @@ DASHBOARD_TEMPLATE = """
         downloadImage();
     }
 
-    // Generate tweet image for a given content (returns canvas)
+    // Generate tweet image for a given content (returns canvas) - uses Brand theme
     async function generateTweetCanvas(content) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         const dim = { width: 1080, height: 1080 };
-        const theme = { bg: '#ffffff', text: '#000000', secondary: '#536471', accent: '#1d9bf0' };
+        const theme = { bg: '#1a3a2f', text: '#f5f0e6', secondary: '#a8b5a0', accent: '#c9a227', card: 'rgba(255,255,255,0.08)' };
         const profileImg = profileImageLoaded ? await profileImageLoaded : null;
 
         canvas.width = dim.width;
         canvas.height = dim.height;
 
-        // White background
+        // Brand green background
         ctx.fillStyle = theme.bg;
         ctx.fillRect(0, 0, dim.width, dim.height);
 
-        // Card
-        const cardMargin = dim.width * 0.08;
-        const cardWidth = dim.width - (cardMargin * 2);
-        const cardX = cardMargin;
-        const cardY = dim.height * 0.15;
-        const cardHeight = dim.height * 0.7;
+        // Subtle texture
+        ctx.globalAlpha = 0.03;
+        for (let i = 0; i < dim.width; i += 60) {
+            for (let j = 0; j < dim.height; j += 60) {
+                ctx.fillStyle = '#c9a227';
+                ctx.fillRect(i, j, 1, 1);
+            }
+        }
+        ctx.globalAlpha = 1;
 
-        ctx.fillStyle = '#ffffff';
-        ctx.shadowColor = 'rgba(0,0,0,0.15)';
-        ctx.shadowBlur = 40;
-        ctx.shadowOffsetY = 10;
-        roundRect(ctx, cardX, cardY, cardWidth, cardHeight, 24);
+        const padding = dim.width * 0.06;
+        const contentWidth = dim.width - (padding * 2);
+        const fontSize = 36;
+        const lineHeight = fontSize * 1.5;
+
+        // Calculate content height
+        ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
+        const lines = wrapText(ctx, content, contentWidth - 80);
+        const textHeight = lines.length * lineHeight;
+
+        // Dynamic card
+        const avatarSize = 80;
+        const cardPadding = 40;
+        const headerHeight = avatarSize + 30;
+        const cardHeight = headerHeight + textHeight + cardPadding * 2 + 20;
+        const cardY = (dim.height - cardHeight) / 2;
+
+        // Card with glassmorphism
+        ctx.shadowColor = 'rgba(0,0,0,0.3)';
+        ctx.shadowBlur = 50;
+        ctx.shadowOffsetY = 15;
+        ctx.fillStyle = theme.card;
+        roundRect(ctx, padding, cardY, contentWidth, cardHeight, 24);
         ctx.fill();
         ctx.shadowColor = 'transparent';
 
-        // Avatar
-        const avatarSize = 56;
-        const avatarX = cardX + 32;
-        const avatarY = cardY + 32;
-
-        ctx.save();
+        // Gold accent line
+        ctx.fillStyle = theme.accent;
         ctx.beginPath();
-        ctx.arc(avatarX + avatarSize/2, avatarY + avatarSize/2, avatarSize/2, 0, Math.PI * 2);
-        ctx.closePath();
-        ctx.clip();
+        ctx.roundRect(padding, cardY, contentWidth, 4, [24, 24, 0, 0]);
+        ctx.fill();
 
-        if (profileImg) {
-            ctx.drawImage(profileImg, avatarX, avatarY, avatarSize, avatarSize);
-        } else {
-            const avatarGradient = ctx.createLinearGradient(avatarX, avatarY, avatarX + avatarSize, avatarY + avatarSize);
-            avatarGradient.addColorStop(0, '#00d4ff');
-            avatarGradient.addColorStop(1, '#a78bfa');
-            ctx.fillStyle = avatarGradient;
-            ctx.fillRect(avatarX, avatarY, avatarSize, avatarSize);
-            ctx.restore();
-            ctx.fillStyle = '#ffffff';
-            ctx.font = 'bold 28px Outfit, sans-serif';
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(PROFILE.name[0] || 'E', avatarX + avatarSize/2, avatarY + avatarSize/2 + 2);
-        }
-        ctx.restore();
+        // Avatar
+        const avatarX = padding + cardPadding;
+        const avatarY = cardY + cardPadding + 10;
+        drawAvatar(ctx, profileImg, avatarX, avatarY, avatarSize, theme);
 
         // Name and handle
         ctx.textAlign = 'left';
         ctx.fillStyle = theme.text;
-        ctx.font = 'bold 22px Outfit, sans-serif';
-        ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 16, avatarY + 22);
-
+        ctx.font = 'bold 26px Outfit, sans-serif';
+        ctx.fillText(PROFILE.name || 'EdgeOfICT', avatarX + avatarSize + 20, avatarY + 32);
         ctx.fillStyle = theme.secondary;
-        ctx.font = '18px Outfit, sans-serif';
-        ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 16, avatarY + 48);
+        ctx.font = '20px Outfit, sans-serif';
+        ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 20, avatarY + 60);
 
-        // Content
-        const contentX = cardX + 32;
-        const contentY = avatarY + avatarSize + 40;
-        const maxWidth = cardWidth - 64;
-
-        ctx.fillStyle = theme.text;
-        ctx.font = '26px Outfit, sans-serif';
-
-        const lines = wrapText(ctx, content, maxWidth);
-        let y = contentY;
+        // Quote text
+        ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
+        let y = avatarY + avatarSize + 50;
         lines.forEach(line => {
             const parts = line.split(/(#\\w+)/g);
-            let x = contentX;
+            let x = padding + cardPadding;
             parts.forEach(part => {
-                if (part.startsWith('#')) {
-                    ctx.fillStyle = theme.accent;
-                } else {
-                    ctx.fillStyle = theme.text;
-                }
+                ctx.fillStyle = part.startsWith('#') ? theme.accent : theme.text;
                 ctx.fillText(part, x, y);
                 x += ctx.measureText(part).width;
             });
-            y += 36;
+            y += lineHeight;
         });
+
+        // Branding
+        ctx.fillStyle = theme.accent;
+        ctx.font = '600 18px JetBrains Mono, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
 
         return canvas;
     }
