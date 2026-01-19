@@ -2615,6 +2615,106 @@ def verify_instagram():
         return jsonify({'configured': False, 'error': str(e)})
 
 
+@app.route('/api/cloudinary/upload', methods=['POST'])
+def upload_to_cloudinary():
+    """Upload base64 image to Cloudinary."""
+    data = request.json
+    image_data = data.get('image')
+
+    if not image_data:
+        return jsonify({'error': 'Missing image data'}), 400
+
+    try:
+        from integrations.cloudinary_client import CloudinaryClient
+        client = CloudinaryClient()
+
+        if not client.is_configured():
+            return jsonify({'error': 'Cloudinary not configured'}), 500
+
+        result = client.upload_base64(image_data)
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'error': f'Upload failed: {str(e)}'}), 500
+
+
+@app.route('/api/cloudinary/verify', methods=['GET'])
+def verify_cloudinary():
+    """Verify Cloudinary credentials."""
+    try:
+        from integrations.cloudinary_client import CloudinaryClient
+        client = CloudinaryClient()
+        result = client.verify_credentials()
+        return jsonify(result)
+
+    except Exception as e:
+        return jsonify({'configured': False, 'error': str(e)})
+
+
+@app.route('/api/post/social', methods=['POST'])
+def post_to_social():
+    """Post to Facebook and Instagram with image.
+
+    Expects:
+        - image: base64 image data
+        - caption: text caption with hashtags
+        - platforms: list of platforms ['facebook', 'instagram']
+    """
+    data = request.json
+    image_data = data.get('image')
+    caption = data.get('caption', '')
+    platforms = data.get('platforms', ['facebook', 'instagram'])
+
+    results = {'facebook': None, 'instagram': None}
+    errors = []
+
+    # Upload image to Cloudinary first
+    image_url = None
+    if image_data:
+        try:
+            from integrations.cloudinary_client import CloudinaryClient
+            cloud_client = CloudinaryClient()
+            if cloud_client.is_configured():
+                upload_result = cloud_client.upload_base64(image_data)
+                image_url = upload_result.get('secure_url')
+        except Exception as e:
+            errors.append(f'Cloudinary upload failed: {str(e)}')
+
+    # Post to Facebook
+    if 'facebook' in platforms:
+        try:
+            from integrations.facebook_client import FacebookClient
+            fb_client = FacebookClient()
+            if fb_client.is_configured():
+                if image_url:
+                    result = fb_client.post_image(image_url, caption)
+                else:
+                    result = fb_client.post_text(caption)
+                results['facebook'] = result
+        except Exception as e:
+            errors.append(f'Facebook: {str(e)}')
+
+    # Post to Instagram (requires image)
+    if 'instagram' in platforms and image_url:
+        try:
+            from integrations.instagram_client import InstagramClient
+            ig_client = InstagramClient()
+            if ig_client.is_configured():
+                result = ig_client.post_image(image_url, caption)
+                results['instagram'] = result
+        except Exception as e:
+            errors.append(f'Instagram: {str(e)}')
+    elif 'instagram' in platforms and not image_url:
+        errors.append('Instagram requires an image')
+
+    return jsonify({
+        'success': len(errors) == 0,
+        'results': results,
+        'image_url': image_url,
+        'errors': errors if errors else None
+    })
+
+
 def ensure_db_seeded():
     """Seed sample data if database is empty."""
     init_db()
