@@ -1222,10 +1222,17 @@ DASHBOARD_TEMPLATE = """
         }
 
         @media (max-width: 768px) {
+            body {
+                overflow: auto;
+                overflow-x: hidden;
+            }
             .header {
                 flex-direction: column;
                 gap: 0.75rem;
                 padding: 1rem;
+                position: sticky;
+                top: 0;
+                z-index: 100;
             }
             .stats-bar {
                 gap: 1rem;
@@ -1236,6 +1243,9 @@ DASHBOARD_TEMPLATE = """
                 grid-template-columns: 1fr;
                 padding: 0.75rem;
                 gap: 0.75rem;
+                height: auto;
+                overflow: visible;
+                padding-bottom: 2rem;
             }
             .column { min-height: 250px; max-height: 400px; }
             .column-body { min-height: 150px; }
