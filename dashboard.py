@@ -1210,6 +1210,123 @@ DASHBOARD_TEMPLATE = """
             transform: translateY(-1px);
             box-shadow: 0 4px 20px rgba(74, 222, 128, 0.3);
         }
+
+        /* Mobile Responsive */
+        @media (max-width: 1024px) {
+            .kanban {
+                grid-template-columns: repeat(2, 1fr);
+                height: auto;
+                min-height: calc(100vh - 65px);
+            }
+            .column { min-height: 300px; }
+        }
+
+        @media (max-width: 768px) {
+            .header {
+                flex-direction: column;
+                gap: 0.75rem;
+                padding: 1rem;
+            }
+            .stats-bar {
+                gap: 1rem;
+                flex-wrap: wrap;
+                justify-content: center;
+            }
+            .kanban {
+                grid-template-columns: 1fr;
+                padding: 0.75rem;
+                gap: 0.75rem;
+            }
+            .column { min-height: 250px; max-height: 400px; }
+            .column-body { min-height: 150px; }
+
+            .modal {
+                width: 95%;
+                max-height: 90vh;
+                margin: 5vh auto;
+            }
+            .modal-content {
+                font-size: 1rem;
+                max-height: 200px;
+            }
+            .modal-actions {
+                flex-wrap: wrap;
+                gap: 0.5rem;
+            }
+            .modal-actions a, .modal-actions button {
+                flex: 1 1 45%;
+                min-width: 120px;
+                text-align: center;
+            }
+
+            .image-generator-modal .img-gen-panel {
+                width: 95%;
+                max-width: none;
+                max-height: 90vh;
+            }
+            .img-gen-content {
+                flex-direction: column;
+            }
+            .img-preview-container {
+                max-width: 100%;
+            }
+            #tweetCanvas {
+                max-width: 100%;
+                height: auto;
+            }
+            .img-gen-controls {
+                padding: 1rem;
+            }
+            .theme-options, .dimension-options {
+                flex-wrap: wrap;
+            }
+            .share-buttons {
+                flex-wrap: wrap;
+            }
+            .share-buttons button {
+                flex: 1 1 45%;
+            }
+
+            .upload-panel {
+                width: 95%;
+                max-height: 90vh;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .logo { font-size: 1.1rem; }
+            .stats-bar { font-size: 0.75rem; gap: 0.75rem; }
+            .stat-label { font-size: 0.65rem; }
+
+            .card { padding: 0.75rem; }
+            .card-content { font-size: 0.85rem; }
+
+            .column-title { font-size: 0.75rem; }
+            .column-count { font-size: 0.65rem; }
+
+            .modal-actions a, .modal-actions button {
+                flex: 1 1 100%;
+                padding: 0.75rem;
+            }
+
+            .btn-post-x, .btn-generate-img, .btn-post-instagram, .btn-post-facebook {
+                padding: 0.75rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+
+        /* Touch-friendly adjustments */
+        @media (hover: none) and (pointer: coarse) {
+            .card {
+                padding: 1rem;
+                margin-bottom: 0.75rem;
+            }
+            .btn-post-x, .btn-generate-img, .btn-post-instagram, .btn-post-facebook,
+            .btn-share, .theme-btn, .dim-btn {
+                min-height: 44px;
+                min-width: 44px;
+            }
+        }
     </style>
 </head>
 <body>
