@@ -3,6 +3,9 @@ import os
 import time
 import requests
 
+# Request timeout in seconds
+REQUEST_TIMEOUT = 30
+
 
 class InstagramClient:
     """Client for posting to Instagram via Facebook Graph API."""
@@ -32,7 +35,7 @@ class InstagramClient:
             'access_token': self.page_token
         }
 
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
         data = response.json()
 
         if 'instagram_business_account' in data:
@@ -63,7 +66,7 @@ class InstagramClient:
             'access_token': self.page_token
         }
 
-        container_response = requests.post(container_url, data=container_payload)
+        container_response = requests.post(container_url, data=container_payload, timeout=REQUEST_TIMEOUT)
         container_data = container_response.json()
 
         if 'error' in container_data:
@@ -82,7 +85,7 @@ class InstagramClient:
                 'fields': 'status_code',
                 'access_token': self.page_token
             }
-            status_response = requests.get(status_url, params=status_params)
+            status_response = requests.get(status_url, params=status_params, timeout=REQUEST_TIMEOUT)
             status_data = status_response.json()
 
             status_code = status_data.get('status_code')
@@ -100,7 +103,7 @@ class InstagramClient:
             'access_token': self.page_token
         }
 
-        publish_response = requests.post(publish_url, data=publish_payload)
+        publish_response = requests.post(publish_url, data=publish_payload, timeout=REQUEST_TIMEOUT)
         publish_data = publish_response.json()
 
         if 'error' in publish_data:
@@ -129,7 +132,7 @@ class InstagramClient:
             'access_token': self.page_token
         }
 
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
         data = response.json()
 
         if 'error' in data:

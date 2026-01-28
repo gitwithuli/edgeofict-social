@@ -2,6 +2,9 @@
 import os
 import requests
 
+# Request timeout in seconds
+REQUEST_TIMEOUT = 30
+
 
 class FacebookClient:
     """Client for posting to Facebook Pages."""
@@ -27,7 +30,7 @@ class FacebookClient:
             'access_token': self.page_token
         }
 
-        response = requests.post(url, data=payload)
+        response = requests.post(url, data=payload, timeout=REQUEST_TIMEOUT)
         data = response.json()
 
         if 'error' in data:
@@ -51,7 +54,7 @@ class FacebookClient:
             'access_token': self.page_token
         }
 
-        response = requests.post(url, data=payload)
+        response = requests.post(url, data=payload, timeout=REQUEST_TIMEOUT)
         data = response.json()
 
         if 'error' in data:
@@ -74,7 +77,7 @@ class FacebookClient:
             'access_token': self.page_token
         }
 
-        response = requests.get(url, params=params)
+        response = requests.get(url, params=params, timeout=REQUEST_TIMEOUT)
         data = response.json()
 
         if 'error' in data:

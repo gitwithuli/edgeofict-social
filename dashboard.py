@@ -3,6 +3,7 @@
 
 import os
 import secrets
+import logging
 from functools import wraps
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 from datetime import datetime, UTC
@@ -11,6 +12,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from core.models import Quote, Post, PostStatus, init_db, get_session
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 PROFILE_CONFIG = {
     'picture_url': os.getenv('PROFILE_PICTURE_URL', 'https://res.cloudinary.com/dbjtqhjxi/image/upload/v1768853567/edgeofict/profile_picture.jpg'),
@@ -21,8 +26,17 @@ PROFILE_CONFIG = {
 app = Flask(__name__)
 app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
 
-# Dashboard password from environment
-DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', 'edgeofict2024')
+# Security configuration
+app.config.update(
+    SESSION_COOKIE_SECURE=os.getenv('FLASK_ENV') == 'production',
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=3600,  # 1 hour
+    MAX_CONTENT_LENGTH=50 * 1024 * 1024  # 50MB max upload
+)
+
+# Dashboard password from environment (no default - must be set)
+DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD')
 
 
 def login_required(f):
@@ -162,11 +176,17 @@ def login():
     error = None
     if request.method == 'POST':
         password = request.form.get('password', '')
-        if password == DASHBOARD_PASSWORD:
+        # Check if password is configured
+        if not DASHBOARD_PASSWORD:
+            logger.error("DASHBOARD_PASSWORD environment variable not set")
+            error = 'Server configuration error'
+        # Use timing-safe comparison to prevent timing attacks
+        elif secrets.compare_digest(password.encode(), DASHBOARD_PASSWORD.encode()):
             session['authenticated'] = True
             session.permanent = True
             return redirect(url_for('dashboard'))
-        error = 'Invalid password'
+        else:
+            error = 'Invalid password'
 
     return render_template_string(LOGIN_TEMPLATE, error=error)
 

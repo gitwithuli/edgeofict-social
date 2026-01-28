@@ -2,8 +2,14 @@
 import os
 import hashlib
 import time
-from datetime import datetime, timedelta
+import logging
+from datetime import datetime, timedelta, UTC
 import requests
+
+logger = logging.getLogger(__name__)
+
+# Request timeout in seconds
+REQUEST_TIMEOUT = 30
 
 
 class CloudinaryClient:
@@ -62,7 +68,7 @@ class CloudinaryClient:
             **params
         }
 
-        response = requests.post(self.upload_url, data=payload)
+        response = requests.post(self.upload_url, data=payload, timeout=REQUEST_TIMEOUT)
         data = response.json()
 
         if 'error' in data:
@@ -82,7 +88,7 @@ class CloudinaryClient:
 
         try:
             url = f'https://api.cloudinary.com/v1_1/{self.cloud_name}/resources/image'
-            response = requests.get(url, auth=(self.api_key, self.api_secret))
+            response = requests.get(url, auth=(self.api_key, self.api_secret), timeout=REQUEST_TIMEOUT)
             if response.status_code == 200:
                 return {
                     'configured': True,
@@ -102,7 +108,7 @@ class CloudinaryClient:
         if exclude is None:
             exclude = ['profile_picture', 'profile']
 
-        cutoff_date = datetime.utcnow() - timedelta(days=days)
+        cutoff_date = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
         deleted = []
         skipped = []
         errors = []
@@ -115,7 +121,7 @@ class CloudinaryClient:
                 if next_cursor:
                     params['next_cursor'] = next_cursor
 
-                response = requests.get(url, params=params, auth=(self.api_key, self.api_secret))
+                response = requests.get(url, params=params, auth=(self.api_key, self.api_secret), timeout=REQUEST_TIMEOUT)
                 data = response.json()
 
                 if 'error' in data:
@@ -169,8 +175,9 @@ class CloudinaryClient:
                 'signature': signature
             }
 
-            response = requests.post(url, data=payload)
+            response = requests.post(url, data=payload, timeout=REQUEST_TIMEOUT)
             data = response.json()
             return data.get('result') == 'ok'
-        except:
+        except Exception as e:
+            logger.warning(f"Failed to delete resource {public_id}: {e}")
             return False
