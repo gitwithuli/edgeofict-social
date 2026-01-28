@@ -2372,48 +2372,6 @@ DASHBOARD_TEMPLATE = """
             ctx.font = '18px Outfit, sans-serif';
             ctx.fillText(PROFILE.handle || '@edgeofict', avatarX + avatarSize + 15, profileY + 48);
 
-        } else {
-            // CARD STYLE (brand, dark): Quote-only, positioned higher for link preview
-            const cardPadding = 50;
-            const signatureHeight = 50;
-            const cardHeight = textHeight + signatureHeight + cardPadding * 2 + 20;
-            const cardY = (dim.height - cardHeight) / 2 - 60;
-
-            // Card with glassmorphism effect
-            ctx.shadowColor = 'rgba(0,0,0,0.3)';
-            ctx.shadowBlur = 50;
-            ctx.shadowOffsetY = 15;
-            ctx.fillStyle = theme.card;
-            roundRect(ctx, padding, cardY, contentWidth, cardHeight, 24);
-            ctx.fill();
-            ctx.shadowColor = 'transparent';
-
-            // Gold accent line at top
-            ctx.fillStyle = theme.accent;
-            ctx.beginPath();
-            ctx.roundRect(padding, cardY, contentWidth, 4, [24, 24, 0, 0]);
-            ctx.fill();
-
-            // Quote text - centered
-            ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
-            ctx.textAlign = 'center';
-            let y = cardY + cardPadding + 40;
-            lines.forEach(line => {
-                drawTextWithHashtags(ctx, line, dim.width / 2, y, theme, 'center');
-                y += lineHeight;
-            });
-
-            // Signature line - centered
-            ctx.fillStyle = theme.accent;
-            ctx.font = 'italic 600 26px Outfit, sans-serif';
-            ctx.fillText('Track your edge.', dim.width / 2, y + 30);
-
-            // Branding below card
-            ctx.fillStyle = theme.accent;
-            ctx.font = '600 18px JetBrains Mono, monospace';
-            ctx.textAlign = 'center';
-            ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
-
         } else if (style === 'elegant') {
             // EDGE THEME: Clean, sophisticated with warm accents
             const cardPadding = 60;
@@ -2453,7 +2411,6 @@ DASHBOARD_TEMPLATE = """
             // Branding at bottom
             ctx.fillStyle = theme.secondary;
             ctx.font = '500 16px Georgia, serif';
-            ctx.letterSpacing = '2px';
             ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
 
         } else if (style === 'stoic') {
@@ -2504,8 +2461,49 @@ DASHBOARD_TEMPLATE = """
             // Branding at bottom
             ctx.fillStyle = theme.secondary;
             ctx.font = '400 14px Georgia, serif';
-            ctx.letterSpacing = '3px';
             ctx.fillText('EDGEOFICT.COM', centerX, dim.height - padding);
+
+        } else {
+            // CARD STYLE (brand, dark): Quote-only, positioned higher for link preview
+            const cardPadding = 50;
+            const signatureHeight = 50;
+            const cardHeight = textHeight + signatureHeight + cardPadding * 2 + 20;
+            const cardY = (dim.height - cardHeight) / 2 - 60;
+
+            // Card with glassmorphism effect
+            ctx.shadowColor = 'rgba(0,0,0,0.3)';
+            ctx.shadowBlur = 50;
+            ctx.shadowOffsetY = 15;
+            ctx.fillStyle = theme.card;
+            roundRect(ctx, padding, cardY, contentWidth, cardHeight, 24);
+            ctx.fill();
+            ctx.shadowColor = 'transparent';
+
+            // Gold accent line at top
+            ctx.fillStyle = theme.accent;
+            ctx.beginPath();
+            ctx.roundRect(padding, cardY, contentWidth, 4, [24, 24, 0, 0]);
+            ctx.fill();
+
+            // Quote text - centered
+            ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
+            ctx.textAlign = 'center';
+            let y = cardY + cardPadding + 40;
+            lines.forEach(line => {
+                drawTextWithHashtags(ctx, line, dim.width / 2, y, theme, 'center');
+                y += lineHeight;
+            });
+
+            // Signature line - centered
+            ctx.fillStyle = theme.accent;
+            ctx.font = 'italic 600 26px Outfit, sans-serif';
+            ctx.fillText('Track your edge.', dim.width / 2, y + 30);
+
+            // Branding below card
+            ctx.fillStyle = theme.accent;
+            ctx.font = '600 18px JetBrains Mono, monospace';
+            ctx.textAlign = 'center';
+            ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
         }
     }
 
