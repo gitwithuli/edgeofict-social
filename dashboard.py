@@ -2464,11 +2464,11 @@ DASHBOARD_TEMPLATE = """
             ctx.fillText('EDGEOFICT.COM', centerX, dim.height - padding);
 
         } else {
-            // CARD STYLE (brand, dark): Quote-only, positioned higher for link preview
+            // CARD STYLE (brand, dark): Quote in centered card
             const cardPadding = 50;
-            const signatureHeight = 50;
-            const cardHeight = textHeight + signatureHeight + cardPadding * 2 + 20;
-            const cardY = (dim.height - cardHeight) / 2 - 60;
+            const signatureHeight = 60;
+            const cardHeight = textHeight + signatureHeight + cardPadding * 2;
+            const cardY = (dim.height - cardHeight) / 2;
 
             // Card with glassmorphism effect
             ctx.shadowColor = 'rgba(0,0,0,0.3)';
@@ -2485,23 +2485,23 @@ DASHBOARD_TEMPLATE = """
             ctx.roundRect(padding, cardY, contentWidth, 4, [24, 24, 0, 0]);
             ctx.fill();
 
-            // Quote text - centered
+            // Quote text - centered in card
             ctx.font = `600 ${fontSize}px Outfit, sans-serif`;
             ctx.textAlign = 'center';
-            let y = cardY + cardPadding + 40;
+            let y = cardY + cardPadding + 30;
             lines.forEach(line => {
                 drawTextWithHashtags(ctx, line, dim.width / 2, y, theme, 'center');
                 y += lineHeight;
             });
 
-            // Signature line - centered
+            // Signature line - centered below quote
             ctx.fillStyle = theme.accent;
             ctx.font = 'italic 600 26px Outfit, sans-serif';
-            ctx.fillText('Track your edge.', dim.width / 2, y + 30);
+            ctx.fillText('Track your edge.', dim.width / 2, y + 25);
 
-            // Branding below card
+            // Branding at bottom of image
             ctx.fillStyle = theme.accent;
-            ctx.font = '600 18px JetBrains Mono, monospace';
+            ctx.font = '600 24px JetBrains Mono, monospace';
             ctx.textAlign = 'center';
             ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
         }
