@@ -2,7 +2,9 @@
 """Kanban dashboard with smooth drag-and-drop."""
 
 import os
-from flask import Flask, render_template_string, request, jsonify
+import secrets
+from functools import wraps
+from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
 from datetime import datetime, UTC
 from dotenv import load_dotenv
 
@@ -17,6 +19,163 @@ PROFILE_CONFIG = {
 }
 
 app = Flask(__name__)
+app.secret_key = os.getenv('FLASK_SECRET_KEY', secrets.token_hex(32))
+
+# Dashboard password from environment
+DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD', 'edgeofict2024')
+
+
+def login_required(f):
+    """Decorator to require login for routes."""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get('authenticated'):
+            if request.is_json:
+                return jsonify({'error': 'Authentication required'}), 401
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated_function
+
+
+LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - EdgeOfICT Social</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #08090a;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .login-container {
+            background: #0d1117;
+            border: 1px solid #21262d;
+            border-radius: 16px;
+            padding: 2.5rem;
+            width: 100%;
+            max-width: 380px;
+        }
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        .login-title {
+            color: #e6edf3;
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .login-subtitle {
+            color: #8b949e;
+            font-size: 0.9rem;
+        }
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+        .form-label {
+            display: block;
+            color: #8b949e;
+            font-size: 0.85rem;
+            margin-bottom: 0.5rem;
+        }
+        .form-input {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 8px;
+            color: #e6edf3;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+        .form-input:focus {
+            outline: none;
+            border-color: #00d4ff;
+        }
+        .btn-login {
+            width: 100%;
+            padding: 0.875rem;
+            background: linear-gradient(135deg, #00d4ff, #a78bfa);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity 0.2s;
+        }
+        .btn-login:hover {
+            opacity: 0.9;
+        }
+        .error-msg {
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+            color: #f87171;
+            padding: 0.75rem;
+            border-radius: 8px;
+            margin-bottom: 1.5rem;
+            font-size: 0.9rem;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-header">
+            <h1 class="login-title">EdgeOfICT Social</h1>
+            <p class="login-subtitle">Enter password to access dashboard</p>
+        </div>
+        {% if error %}
+        <div class="error-msg">{{ error }}</div>
+        {% endif %}
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label" for="password">Password</label>
+                <input type="password" id="password" name="password" class="form-input" placeholder="Enter dashboard password" autofocus required>
+            </div>
+            <button type="submit" class="btn-login">Sign In</button>
+        </form>
+    </div>
+</body>
+</html>
+"""
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Login page."""
+    if session.get('authenticated'):
+        return redirect(url_for('dashboard'))
+
+    error = None
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == DASHBOARD_PASSWORD:
+            session['authenticated'] = True
+            session.permanent = True
+            return redirect(url_for('dashboard'))
+        error = 'Invalid password'
+
+    return render_template_string(LOGIN_TEMPLATE, error=error)
+
+
+@app.route('/logout')
+def logout():
+    """Logout and clear session."""
+    session.clear()
+    return redirect(url_for('login'))
 
 DASHBOARD_TEMPLATE = """
 <!DOCTYPE html>
@@ -721,7 +880,7 @@ DASHBOARD_TEMPLATE = """
 
         .theme-options {
             display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 0.5rem;
         }
 
@@ -749,6 +908,8 @@ DASHBOARD_TEMPLATE = """
         .theme-btn.minimal { background: #fafafa; color: #1a1a1a; }
         .theme-btn.bold { background: linear-gradient(135deg, #1a3a2f, #0d1f17); color: #c9a227; }
         .theme-btn.dark { background: #0d1117; color: #e6edf3; }
+        .theme-btn.edge { background: #FAF7F2; color: #C45A3B; border-color: #8B9A7D; }
+        .theme-btn.stoic { background: #0f0f0f; color: #C45A3B; font-style: italic; }
 
         .dimension-options {
             display: flex;
@@ -1518,6 +1679,8 @@ DASHBOARD_TEMPLATE = """
                             <button class="theme-btn minimal" data-theme="minimal" onclick="setTheme('minimal')">Minimal</button>
                             <button class="theme-btn bold" data-theme="bold" onclick="setTheme('bold')">Bold</button>
                             <button class="theme-btn dark" data-theme="dark" onclick="setTheme('dark')">Dark</button>
+                            <button class="theme-btn edge" data-theme="edge" onclick="setTheme('edge')">Edge</button>
+                            <button class="theme-btn stoic" data-theme="stoic" onclick="setTheme('stoic')">Stoic</button>
                         </div>
                     </div>
                     <div class="control-group">
@@ -2040,7 +2203,9 @@ DASHBOARD_TEMPLATE = """
         brand: { bg: '#1a3a2f', text: '#f5f0e6', secondary: '#a8b5a0', accent: '#c9a227', card: 'rgba(255,255,255,0.08)', style: 'card' },
         minimal: { bg: '#fafafa', text: '#1a1a1a', secondary: '#666666', accent: '#1a3a2f', card: '#ffffff', style: 'centered' },
         bold: { bg: 'gradient-brand', text: '#f5f0e6', secondary: '#c9a227', accent: '#c9a227', card: 'none', style: 'fullbleed' },
-        dark: { bg: '#0d1117', text: '#e6edf3', secondary: '#8b949e', accent: '#c9a227', card: 'rgba(255,255,255,0.06)', style: 'card' }
+        dark: { bg: '#0d1117', text: '#e6edf3', secondary: '#8b949e', accent: '#c9a227', card: 'rgba(255,255,255,0.06)', style: 'card' },
+        edge: { bg: '#FAF7F2', text: '#0F0F0F', secondary: '#8B9A7D', accent: '#C45A3B', card: '#ffffff', style: 'elegant' },
+        stoic: { bg: '#0f0f0f', text: '#e8e4df', secondary: '#6b6561', accent: '#C45A3B', card: 'rgba(255,255,255,0.04)', style: 'stoic' }
     };
 
     const dimensions = {
@@ -2104,6 +2269,20 @@ DASHBOARD_TEMPLATE = """
                 for (let j = 0; j < dim.height; j += 60) {
                     ctx.fillStyle = '#c9a227';
                     ctx.fillRect(i, j, 1, 1);
+                }
+            }
+            ctx.globalAlpha = 1;
+        }
+
+        // Add subtle noise texture for stoic theme
+        if (imgGenState.theme === 'stoic') {
+            ctx.globalAlpha = 0.015;
+            for (let i = 0; i < dim.width; i += 4) {
+                for (let j = 0; j < dim.height; j += 4) {
+                    if (Math.random() > 0.5) {
+                        ctx.fillStyle = '#ffffff';
+                        ctx.fillRect(i, j, 1, 1);
+                    }
                 }
             }
             ctx.globalAlpha = 1;
@@ -2234,6 +2413,99 @@ DASHBOARD_TEMPLATE = """
             ctx.font = '600 18px JetBrains Mono, monospace';
             ctx.textAlign = 'center';
             ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
+
+        } else if (style === 'elegant') {
+            // EDGE THEME: Clean, sophisticated with warm accents
+            const cardPadding = 60;
+            const signatureHeight = 80;
+            const totalContentHeight = textHeight + signatureHeight + cardPadding * 2;
+            const cardY = (dim.height - totalContentHeight) / 2;
+
+            // Subtle card with soft shadow
+            ctx.shadowColor = 'rgba(0,0,0,0.08)';
+            ctx.shadowBlur = 40;
+            ctx.shadowOffsetY = 10;
+            ctx.fillStyle = theme.card;
+            roundRect(ctx, padding + 20, cardY, contentWidth - 40, totalContentHeight, 16);
+            ctx.fill();
+            ctx.shadowColor = 'transparent';
+
+            // Left accent bar
+            ctx.fillStyle = theme.accent;
+            roundRect(ctx, padding + 20, cardY + 30, 4, totalContentHeight - 60, 2);
+            ctx.fill();
+
+            // Quote text - centered
+            ctx.font = `500 ${fontSize}px Georgia, serif`;
+            ctx.textAlign = 'center';
+            let y = cardY + cardPadding + 20;
+            lines.forEach(line => {
+                ctx.fillStyle = theme.text;
+                ctx.fillText(line, dim.width / 2, y);
+                y += lineHeight;
+            });
+
+            // Signature - italic
+            ctx.fillStyle = theme.accent;
+            ctx.font = 'italic 500 24px Georgia, serif';
+            ctx.fillText('Track your edge.', dim.width / 2, y + 40);
+
+            // Branding at bottom
+            ctx.fillStyle = theme.secondary;
+            ctx.font = '500 16px Georgia, serif';
+            ctx.letterSpacing = '2px';
+            ctx.fillText('EDGEOFICT.COM', dim.width / 2, dim.height - padding);
+
+        } else if (style === 'stoic') {
+            // STOIC THEME: Classical, dignified with terracotta accents
+            const centerX = dim.width / 2;
+            const totalContentHeight = textHeight + 200;
+            const startY = (dim.height - totalContentHeight) / 2;
+
+            // Top decorative line
+            ctx.strokeStyle = theme.secondary;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(centerX - 200, startY);
+            ctx.lineTo(centerX + 200, startY);
+            ctx.stroke();
+
+            // Quote text - elegant serif centered
+            ctx.font = `italic 400 ${fontSize}px Georgia, serif`;
+            ctx.textAlign = 'center';
+            ctx.fillStyle = theme.text;
+            let y = startY + 60;
+
+            // Opening quote mark
+            ctx.font = 'italic 72px Georgia, serif';
+            ctx.fillStyle = theme.accent;
+            ctx.fillText('"', centerX - ctx.measureText(lines[0] || '').width / 2 - 30, y - 10);
+
+            // Quote lines
+            ctx.font = `italic 400 ${fontSize}px Georgia, serif`;
+            ctx.fillStyle = theme.text;
+            lines.forEach(line => {
+                ctx.fillText(line, centerX, y);
+                y += lineHeight;
+            });
+
+            // Bottom decorative line
+            ctx.strokeStyle = theme.secondary;
+            ctx.beginPath();
+            ctx.moveTo(centerX - 200, y + 30);
+            ctx.lineTo(centerX + 200, y + 30);
+            ctx.stroke();
+
+            // Signature line
+            ctx.fillStyle = theme.accent;
+            ctx.font = 'italic 600 28px Georgia, serif';
+            ctx.fillText('Track your edge.', centerX, y + 80);
+
+            // Branding at bottom
+            ctx.fillStyle = theme.secondary;
+            ctx.font = '400 14px Georgia, serif';
+            ctx.letterSpacing = '3px';
+            ctx.fillText('EDGEOFICT.COM', centerX, dim.height - padding);
         }
     }
 
@@ -2876,32 +3148,33 @@ DASHBOARD_TEMPLATE = """
 
 
 @app.route('/')
+@login_required
 def dashboard():
     init_db()
-    session = get_session()
+    db_session = get_session()
 
-    fresh_quotes = session.query(Quote).filter(
+    fresh_quotes = db_session.query(Quote).filter(
         Quote.approved == True,
         Quote.used_count == 0
     ).order_by(Quote.quality_score.desc()).all()
 
-    approved_posts = session.query(Post).filter(
+    approved_posts = db_session.query(Post).filter(
         Post.status == PostStatus.APPROVED.value
     ).order_by(Post.scheduled_time.asc()).all()
 
-    pending_posts = session.query(Post).filter(
+    pending_posts = db_session.query(Post).filter(
         Post.status == PostStatus.PENDING.value
     ).order_by(Post.scheduled_time.asc()).all()
 
-    posted_posts = session.query(Post).filter(
+    posted_posts = db_session.query(Post).filter(
         Post.status == PostStatus.POSTED.value
     ).order_by(Post.posted_time.desc()).limit(20).all()
 
     stats = {
-        'total_quotes': session.query(Quote).count(),
-        'documents': session.query(Quote.source).distinct().count(),
-        'unused_quotes': session.query(Quote).filter(Quote.used_count == 0).count(),
-        'posted': session.query(Post).filter(Post.status == PostStatus.POSTED.value).count(),
+        'total_quotes': db_session.query(Quote).count(),
+        'documents': db_session.query(Quote.source).distinct().count(),
+        'unused_quotes': db_session.query(Quote).filter(Quote.used_count == 0).count(),
+        'posted': db_session.query(Post).filter(Post.status == PostStatus.POSTED.value).count(),
     }
 
     return render_template_string(
@@ -2916,6 +3189,7 @@ def dashboard():
 
 
 @app.route('/api/post/status', methods=['POST'])
+@login_required
 def update_post_status():
     data = request.json
     post_id = data.get('post_id')
@@ -2940,6 +3214,7 @@ def update_post_status():
 
 
 @app.route('/api/quote/to-post', methods=['POST'])
+@login_required
 def quote_to_post():
     data = request.json
     quote_id = data.get('quote_id')
@@ -2977,6 +3252,7 @@ def quote_to_post():
 
 
 @app.route('/api/extract-quotes', methods=['POST'])
+@login_required
 def extract_quotes_from_upload():
     import os
     import tempfile
@@ -3020,6 +3296,7 @@ def extract_quotes_from_upload():
 
 
 @app.route('/api/post/tweet', methods=['POST'])
+@login_required
 def post_to_twitter():
     """Post an approved post to Twitter/X."""
     data = request.json
@@ -3065,6 +3342,7 @@ def post_to_twitter():
 
 
 @app.route('/api/twitter/verify', methods=['GET'])
+@login_required
 def verify_twitter():
     """Verify Twitter API credentials."""
     try:
@@ -3082,6 +3360,7 @@ def verify_twitter():
 
 
 @app.route('/api/post/facebook', methods=['POST'])
+@login_required
 def post_to_facebook():
     """Post content to Facebook Page (with optional image)."""
     data = request.json
@@ -3122,6 +3401,7 @@ def post_to_facebook():
 
 
 @app.route('/api/facebook/verify', methods=['GET'])
+@login_required
 def verify_facebook():
     """Verify Facebook Page credentials."""
     try:
@@ -3135,6 +3415,7 @@ def verify_facebook():
 
 
 @app.route('/api/post/instagram', methods=['POST'])
+@login_required
 def post_to_instagram():
     """Post image to Instagram."""
     data = request.json
@@ -3164,6 +3445,7 @@ def post_to_instagram():
 
 
 @app.route('/api/instagram/verify', methods=['GET'])
+@login_required
 def verify_instagram():
     """Verify Instagram connection."""
     try:
@@ -3177,6 +3459,7 @@ def verify_instagram():
 
 
 @app.route('/api/cloudinary/upload', methods=['POST'])
+@login_required
 def upload_to_cloudinary():
     """Upload base64 image to Cloudinary."""
     data = request.json
@@ -3200,6 +3483,7 @@ def upload_to_cloudinary():
 
 
 @app.route('/api/cloudinary/verify', methods=['GET'])
+@login_required
 def verify_cloudinary():
     """Verify Cloudinary credentials."""
     try:
@@ -3213,6 +3497,7 @@ def verify_cloudinary():
 
 
 @app.route('/api/cloudinary/cleanup', methods=['POST'])
+@login_required
 def cleanup_cloudinary():
     """Delete images older than specified days. Use via cron job."""
     data = request.json or {}
@@ -3238,6 +3523,7 @@ def cleanup_cloudinary():
 
 
 @app.route('/api/post/social', methods=['POST'])
+@login_required
 def post_to_social():
     """Post to Facebook and Instagram with image.
 
