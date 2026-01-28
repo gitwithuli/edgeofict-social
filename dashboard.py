@@ -2495,6 +2495,7 @@ DASHBOARD_TEMPLATE = """
             });
 
             // Signature line - centered below quote
+            ctx.textAlign = 'center';
             ctx.fillStyle = theme.accent;
             ctx.font = 'italic 600 26px Outfit, sans-serif';
             ctx.fillText('Track your edge.', dim.width / 2, y + 25);
