@@ -4381,10 +4381,10 @@ def get_stoic_entry_for_today():
 
 
 def generate_stoic_trading_content(entry):
-    """Use Groq API to generate trading-angle content for stoic entry."""
-    api_key = os.getenv('GROQ_API_KEY')
+    """Use Claude Sonnet API to generate trading-angle content for stoic entry."""
+    api_key = os.getenv('ANTHROPIC_API_KEY')
     if not api_key:
-        raise ValueError("GROQ_API_KEY not set")
+        raise ValueError("ANTHROPIC_API_KEY not set")
 
     prompt = f'''You are creating a "Stoic x Trader" card that applies ancient Stoic philosophy to trading psychology.
 
@@ -4407,7 +4407,7 @@ Create content for the trading card with these elements:
 
 4. Tweet text: A tweet (under 250 chars) with the key insight + trading angle. Include hashtags: #ict #trader #tradingpsychology #stoic
 
-Respond in JSON format:
+Respond in JSON format only:
 {{
   "point1_title": "...",
   "point1_meaning": "...",
@@ -4421,30 +4421,28 @@ Respond in JSON format:
   "closing_wisdom": "...",
   "key_takeaway": "...",
   "tweet": "..."
-}}
-
-Only respond with valid JSON, no other text.'''
+}}'''
 
     import requests as req
     response = req.post(
-        "https://api.groq.com/openai/v1/chat/completions",
+        "https://api.anthropic.com/v1/messages",
         headers={
-            "Authorization": f"Bearer {api_key}",
+            "x-api-key": api_key,
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json"
         },
         json={
-            "model": "llama-3.3-70b-versatile",
-            "messages": [{"role": "user", "content": prompt}],
+            "model": "claude-sonnet-4-20250514",
             "max_tokens": 1024,
-            "temperature": 0.7
+            "messages": [{"role": "user", "content": prompt}]
         },
         timeout=60
     )
 
     if response.status_code != 200:
-        raise Exception(f"Groq API error: {response.status_code}")
+        raise Exception(f"Claude API error: {response.status_code} - {response.text}")
 
-    content = response.json()["choices"][0]["message"]["content"]
+    content = response.json()["content"][0]["text"]
 
     # Parse JSON from response
     try:
@@ -4454,7 +4452,7 @@ Only respond with valid JSON, no other text.'''
         end = content.rfind('}') + 1
         if start != -1 and end > start:
             return json.loads(content[start:end])
-        raise ValueError("Could not parse JSON from Groq response")
+        raise ValueError("Could not parse JSON from Claude response")
 
 
 def generate_stoic_card_html(entry, content, date_str):
