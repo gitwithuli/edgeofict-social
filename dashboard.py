@@ -2,6 +2,7 @@
 """Kanban dashboard with smooth drag-and-drop."""
 
 import os
+import json
 import secrets
 import logging
 from functools import wraps
@@ -1051,6 +1052,270 @@ DASHBOARD_TEMPLATE = """
             height: 16px;
         }
 
+        .btn-stoic {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: linear-gradient(135deg, #C45A3B, #8B3A2A);
+            border: none;
+            border-radius: 8px;
+            color: white;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: 0 2px 8px rgba(196, 90, 59, 0.25);
+        }
+
+        .btn-stoic:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 16px rgba(196, 90, 59, 0.35);
+        }
+
+        .btn-stoic:active {
+            transform: translateY(0);
+        }
+
+        .btn-stoic svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* Stoic Modal */
+        .stoic-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(12px);
+            display: none;
+            align-items: center;
+            justify-content: center;
+            z-index: 10000;
+            opacity: 0;
+            transition: opacity 0.25s ease;
+        }
+
+        .stoic-modal.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .stoic-panel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 520px;
+            max-height: 90vh;
+            overflow: hidden;
+            transform: scale(0.95) translateY(10px);
+            transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .stoic-modal.show .stoic-panel {
+            transform: scale(1) translateY(0);
+        }
+
+        .stoic-header {
+            padding: 1.25rem 1.5rem;
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stoic-title {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .stoic-title-icon {
+            color: #C45A3B;
+        }
+
+        .stoic-close {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.5rem;
+            cursor: pointer;
+            padding: 0.25rem;
+            line-height: 1;
+            transition: color 0.2s;
+        }
+
+        .stoic-close:hover {
+            color: var(--text-primary);
+        }
+
+        .stoic-body {
+            padding: 1.5rem;
+            overflow-y: auto;
+            max-height: calc(90vh - 140px);
+        }
+
+        .stoic-date-info {
+            text-align: center;
+            margin-bottom: 1.25rem;
+        }
+
+        .stoic-date {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .stoic-entry-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-top: 0.5rem;
+        }
+
+        .stoic-author {
+            font-size: 0.9rem;
+            color: #C45A3B;
+            margin-top: 0.25rem;
+        }
+
+        .stoic-preview {
+            margin: 1.25rem 0;
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .stoic-preview img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .stoic-tweet-preview {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .stoic-tweet-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 0.5rem;
+        }
+
+        .stoic-tweet-text {
+            font-size: 0.9rem;
+            color: var(--text-primary);
+            line-height: 1.5;
+        }
+
+        .stoic-actions {
+            display: flex;
+            gap: 0.75rem;
+            padding: 1rem 1.5rem;
+            border-top: 1px solid var(--border);
+            background: var(--bg-elevated);
+        }
+
+        .stoic-btn {
+            flex: 1;
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            font-family: 'Outfit', sans-serif;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .stoic-btn-generate {
+            background: linear-gradient(135deg, #C45A3B, #8B3A2A);
+            border: none;
+            color: white;
+        }
+
+        .stoic-btn-generate:hover:not(:disabled) {
+            box-shadow: 0 4px 16px rgba(196, 90, 59, 0.35);
+        }
+
+        .stoic-btn-generate:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .stoic-btn-queue {
+            background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+            border: none;
+            color: white;
+        }
+
+        .stoic-btn-queue:hover {
+            box-shadow: 0 4px 16px rgba(0, 212, 255, 0.35);
+        }
+
+        .stoic-btn-cancel {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .stoic-btn-cancel:hover {
+            border-color: var(--border-bright);
+            color: var(--text-primary);
+        }
+
+        .stoic-loading {
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .stoic-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: #C45A3B;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .stoic-loading-text {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .stoic-error {
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid rgba(248, 113, 113, 0.3);
+            color: #f87171;
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+            margin: 1rem 0;
+        }
+
         /* Upload Modal */
         .upload-modal {
             position: fixed;
@@ -1531,6 +1796,13 @@ DASHBOARD_TEMPLATE = """
                 </svg>
                 Create
             </button>
+            <button class="btn-stoic" onclick="openStoicModal()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+                    <circle cx="12" cy="12" r="10"/>
+                    <path d="M12 6v6l4 2"/>
+                </svg>
+                Stoic
+            </button>
             <div class="stat"><span class="stat-num">{{ stats.documents }}</span><span class="stat-label">docs</span></div>
             <div class="stat"><span class="stat-num" id="stat-unused">{{ stats.unused_quotes }}</span><span class="stat-label">unused</span></div>
             <div class="stat"><span class="stat-num" id="stat-posted">{{ stats.posted }}</span><span class="stat-label">posted</span></div>
@@ -1800,6 +2072,40 @@ DASHBOARD_TEMPLATE = """
                     </div>
                 </div>
                 <button class="btn-done" onclick="finishUpload()">Done</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Stoic Card Modal -->
+    <div class="stoic-modal" id="stoicModal">
+        <div class="stoic-panel">
+            <div class="stoic-header">
+                <span class="stoic-title">
+                    <span class="stoic-title-icon">&#9765;</span>
+                    Daily Stoic Card
+                </span>
+                <button class="stoic-close" onclick="closeStoicModal()">&times;</button>
+            </div>
+            <div class="stoic-body" id="stoicBody">
+                <div class="stoic-date-info">
+                    <div class="stoic-date" id="stoicDate">Loading...</div>
+                    <div class="stoic-entry-title" id="stoicEntryTitle"></div>
+                    <div class="stoic-author" id="stoicAuthor"></div>
+                </div>
+                <div id="stoicContent">
+                    <div class="stoic-loading" id="stoicInitial">
+                        <p style="color: var(--text-secondary); margin-bottom: 1rem;">Generate today's Stoic trading card</p>
+                    </div>
+                </div>
+            </div>
+            <div class="stoic-actions" id="stoicActions">
+                <button class="stoic-btn stoic-btn-cancel" onclick="closeStoicModal()">Cancel</button>
+                <button class="stoic-btn stoic-btn-generate" id="btnStoicGenerate" onclick="generateStoicCard()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                    </svg>
+                    Generate Card
+                </button>
             </div>
         </div>
     </div>
@@ -2950,6 +3256,150 @@ DASHBOARD_TEMPLATE = """
         resetUploadForm();
     }
 
+    // Stoic Modal Functions
+    let stoicCardData = null;
+
+    function openStoicModal() {
+        document.getElementById('stoicModal').classList.add('show');
+        loadStoicEntry();
+    }
+
+    function closeStoicModal() {
+        document.getElementById('stoicModal').classList.remove('show');
+        stoicCardData = null;
+    }
+
+    async function loadStoicEntry() {
+        const today = new Date();
+        const dateStr = today.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+        document.getElementById('stoicDate').textContent = dateStr.toUpperCase();
+
+        try {
+            const response = await fetch('/api/stoic/entry');
+            const data = await response.json();
+
+            if (data.error) {
+                document.getElementById('stoicEntryTitle').textContent = 'Error loading entry';
+                return;
+            }
+
+            document.getElementById('stoicEntryTitle').textContent = data.title;
+            document.getElementById('stoicAuthor').textContent = data.author;
+        } catch (err) {
+            document.getElementById('stoicEntryTitle').textContent = 'Error loading entry';
+        }
+    }
+
+    async function generateStoicCard() {
+        const btn = document.getElementById('btnStoicGenerate');
+        const content = document.getElementById('stoicContent');
+
+        btn.disabled = true;
+        btn.innerHTML = '<div class="stoic-spinner" style="width:16px;height:16px;border-width:2px;margin:0;"></div> Generating...';
+
+        content.innerHTML = `
+            <div class="stoic-loading">
+                <div class="stoic-spinner"></div>
+                <div class="stoic-loading-text">Generating trading wisdom...</div>
+            </div>
+        `;
+
+        try {
+            const response = await fetch('/api/stoic/generate', { method: 'POST' });
+            const data = await response.json();
+
+            if (data.error) {
+                content.innerHTML = `<div class="stoic-error">${data.error}</div>`;
+                btn.disabled = false;
+                btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Retry`;
+                return;
+            }
+
+            stoicCardData = data;
+
+            content.innerHTML = `
+                <div class="stoic-preview">
+                    <img src="${data.image_url}" alt="Stoic Card">
+                </div>
+                <div class="stoic-tweet-preview">
+                    <div class="stoic-tweet-label">Tweet Text</div>
+                    <div class="stoic-tweet-text">${data.tweet}</div>
+                </div>
+            `;
+
+            // Update actions
+            document.getElementById('stoicActions').innerHTML = `
+                <button class="stoic-btn stoic-btn-cancel" onclick="closeStoicModal()">Close</button>
+                <button class="stoic-btn stoic-btn-queue" onclick="queueStoicCard()">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 5v14M5 12h14"/>
+                    </svg>
+                    Add to Queue
+                </button>
+            `;
+        } catch (err) {
+            content.innerHTML = `<div class="stoic-error">Failed to generate: ${err.message}</div>`;
+            btn.disabled = false;
+            btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Retry`;
+        }
+    }
+
+    async function queueStoicCard() {
+        if (!stoicCardData) return;
+
+        try {
+            const response = await fetch('/api/stoic/queue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tweet: stoicCardData.tweet,
+                    image_path: stoicCardData.image_path
+                })
+            });
+            const data = await response.json();
+
+            if (data.error) {
+                alert('Failed to queue: ' + data.error);
+                return;
+            }
+
+            // Add card to pending column
+            const pendingColumn = document.querySelector('.col-pending .column-body');
+            const newCard = document.createElement('div');
+            newCard.className = 'card pending';
+            newCard.dataset.type = 'post';
+            newCard.dataset.id = data.post_id;
+            newCard.dataset.fullContent = JSON.stringify(stoicCardData.tweet);
+            newCard.innerHTML = `
+                <div class="card-content">${stoicCardData.tweet.substring(0, 140)}${stoicCardData.tweet.length > 140 ? '...' : ''}</div>
+                <div class="card-meta post-meta">
+                    <span><span class="status-dot pending"></span>Stoic Card</span>
+                    <span class="char-count char-ok">${stoicCardData.tweet.length}/280</span>
+                </div>
+            `;
+            pendingColumn.insertBefore(newCard, pendingColumn.firstChild);
+
+            // Update count
+            const countEl = document.querySelector('.col-pending .column-count');
+            countEl.textContent = parseInt(countEl.textContent) + 1;
+
+            closeStoicModal();
+            showToast('Stoic card added to queue!');
+        } catch (err) {
+            alert('Failed to queue: ' + err.message);
+        }
+    }
+
+    // Close stoic modal on backdrop click and escape
+    document.getElementById('stoicModal').addEventListener('click', (e) => {
+        if (e.target.id === 'stoicModal') closeStoicModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('stoicModal').classList.contains('show')) {
+            closeStoicModal();
+        }
+    });
+
     function resetUploadForm() {
         selectedFile = null;
         document.getElementById('uploadForm').style.display = 'block';
@@ -3604,6 +4054,357 @@ def post_to_social():
         'image_url': image_url,
         'errors': errors if errors else None
     })
+
+
+# =============================================================================
+# Stoic Card API Endpoints
+# =============================================================================
+
+STOIC_DATA_PATH = os.path.join(os.path.expanduser('~'), 'clawd', 'data', 'daily_stoic.json')
+STOIC_ARCHIVE_PATH = os.path.join(os.path.expanduser('~'), 'clawd', 'stoic-trader-archive')
+
+
+def load_stoic_entries():
+    """Load the Daily Stoic entries from JSON file."""
+    try:
+        with open(STOIC_DATA_PATH, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        logger.error(f"Failed to load stoic entries: {e}")
+        return []
+
+
+def get_stoic_entry_for_today():
+    """Get today's stoic entry."""
+    entries = load_stoic_entries()
+    now = datetime.now()
+    month = now.strftime('%B')
+    day = now.day
+
+    for entry in entries:
+        if entry.get('month') == month and entry.get('day') == day:
+            return entry
+    return None
+
+
+def generate_stoic_trading_content(entry):
+    """Use Groq API to generate trading-angle content for stoic entry."""
+    api_key = os.getenv('GROQ_API_KEY')
+    if not api_key:
+        raise ValueError("GROQ_API_KEY not set")
+
+    prompt = f'''You are creating a "Stoic x Trader" card that applies ancient Stoic philosophy to trading psychology.
+
+Today's entry from The Daily Stoic:
+- Title: {entry['title']}
+- Philosopher: {entry['author']}
+- Quote: "{entry['quote']}"
+- Reflection: {entry['body'][:1000]}
+
+Create content for the trading card with these elements:
+
+1. Three principles (each with title, stoic meaning, and trading application):
+   - Title: 2-4 words, captures the essence
+   - Meaning: Brief stoic interpretation (under 10 words)
+   - Trading: Specific trading application (under 12 words)
+
+2. Closing wisdom: A reflective sentence connecting stoicism to trading (under 20 words)
+
+3. Key takeaway: A punchy, memorable line (under 10 words)
+
+4. Tweet text: A tweet (under 250 chars) with the key insight + trading angle. Include hashtags: #ict #trader #tradingpsychology #stoic
+
+Respond in JSON format:
+{{
+  "point1_title": "...",
+  "point1_meaning": "...",
+  "point1_trading": "...",
+  "point2_title": "...",
+  "point2_meaning": "...",
+  "point2_trading": "...",
+  "point3_title": "...",
+  "point3_meaning": "...",
+  "point3_trading": "...",
+  "closing_wisdom": "...",
+  "key_takeaway": "...",
+  "tweet": "..."
+}}
+
+Only respond with valid JSON, no other text.'''
+
+    import requests as req
+    response = req.post(
+        "https://api.groq.com/openai/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        },
+        json={
+            "model": "llama-3.3-70b-versatile",
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": 1024,
+            "temperature": 0.7
+        },
+        timeout=60
+    )
+
+    if response.status_code != 200:
+        raise Exception(f"Groq API error: {response.status_code}")
+
+    content = response.json()["choices"][0]["message"]["content"]
+
+    # Parse JSON from response
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        start = content.find('{')
+        end = content.rfind('}') + 1
+        if start != -1 and end > start:
+            return json.loads(content[start:end])
+        raise ValueError("Could not parse JSON from Groq response")
+
+
+def generate_stoic_card_html(entry, content, date_str):
+    """Generate the stoic card HTML."""
+    source = entry.get('source', '')
+    if source and source.isupper():
+        source = source.title()
+
+    template = '''<!DOCTYPE html>
+<html>
+<head>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+html,body{{width:1080px;height:1350px;background:#0F0F0F;margin:0;padding:0}}
+body{{display:flex;justify-content:center;align-items:center;font-family:Georgia,serif}}
+div.card{{width:800px;background:linear-gradient(145deg,#141414,#0a0a0a);border:1px solid #1a1a1a;border-radius:20px;padding:70px;color:#e6e6e6}}
+.header{{text-align:center;margin-bottom:45px}}
+.header h1{{font-size:16px;letter-spacing:5px;text-transform:uppercase;color:#C45A3B;margin-bottom:8px}}
+.header .source{{font-size:12px;color:#666;margin-bottom:12px;font-style:italic}}
+.header h2{{font-size:32px;color:#e6e6e6;font-style:italic;font-weight:normal}}
+.date{{text-align:center;font-size:12px;letter-spacing:2px;color:#555;margin-bottom:20px;text-transform:uppercase}}
+.divider{{height:1px;background:linear-gradient(90deg,transparent,#333,transparent);margin:30px 0}}
+.area{{margin:28px 0;text-align:center}}
+.area-title{{font-size:18px;color:#C45A3B;margin-bottom:8px;font-weight:bold}}
+.area-meaning{{font-size:15px;color:#888;margin-bottom:6px;font-style:italic}}
+.area-trading{{font-size:17px;color:#e6e6e6}}
+.bottom{{text-align:center;margin-top:40px;padding-top:30px;border-top:1px solid #1a1a1a}}
+.bottom p{{font-size:17px;color:#888;line-height:1.7;font-style:italic}}
+.bottom .key{{color:#C45A3B;font-style:normal;font-weight:bold;display:block;margin-top:20px;font-size:18px}}
+.cta{{text-align:center;margin-top:35px}}
+.cta-text{{font-size:15px;color:#777;font-style:italic;margin-bottom:8px}}
+.cta-url{{font-size:14px;color:#e6e6e6;letter-spacing:2px;font-weight:bold}}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="date">{date}</div>
+  <div class="header">
+    <h1>{philosopher}</h1>
+    <div class="source">{source}</div>
+    <h2>{title}</h2>
+  </div>
+  <div class="divider"></div>
+  <div class="area">
+    <div class="area-title">1. {point1_title}</div>
+    <div class="area-meaning">{point1_meaning}</div>
+    <div class="area-trading">{point1_trading}</div>
+  </div>
+  <div class="area">
+    <div class="area-title">2. {point2_title}</div>
+    <div class="area-meaning">{point2_meaning}</div>
+    <div class="area-trading">{point2_trading}</div>
+  </div>
+  <div class="area">
+    <div class="area-title">3. {point3_title}</div>
+    <div class="area-meaning">{point3_meaning}</div>
+    <div class="area-trading">{point3_trading}</div>
+  </div>
+  <div class="bottom">
+    <p>{closing_wisdom}</p>
+    <span class="key">{key_takeaway}</span>
+  </div>
+  <div class="cta">
+    <div class="cta-text">Track your edge.</div>
+    <div class="cta-url">EDGEOFICT.COM</div>
+  </div>
+</div>
+</body>
+</html>'''
+
+    return template.format(
+        date=date_str,
+        philosopher=entry['author'],
+        source=source,
+        title=entry['title'],
+        point1_title=content['point1_title'],
+        point1_meaning=content['point1_meaning'],
+        point1_trading=content['point1_trading'],
+        point2_title=content['point2_title'],
+        point2_meaning=content['point2_meaning'],
+        point2_trading=content['point2_trading'],
+        point3_title=content['point3_title'],
+        point3_meaning=content['point3_meaning'],
+        point3_trading=content['point3_trading'],
+        closing_wisdom=content['closing_wisdom'],
+        key_takeaway=content['key_takeaway']
+    )
+
+
+def html_to_png_stoic(html_content, output_path):
+    """Convert HTML to PNG using Chrome headless."""
+    import subprocess
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as f:
+        f.write(html_content)
+        html_path = f.name
+
+    try:
+        chrome_paths = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+        ]
+
+        chrome = None
+        for path in chrome_paths:
+            if os.path.exists(path):
+                chrome = path
+                break
+
+        if not chrome:
+            raise Exception("Chrome not found")
+
+        cmd = [
+            chrome,
+            '--headless',
+            '--disable-gpu',
+            '--screenshot=' + str(output_path),
+            '--window-size=1080,1350',
+            '--hide-scrollbars',
+            f'file://{html_path}'
+        ]
+
+        subprocess.run(cmd, check=True, capture_output=True)
+
+    finally:
+        os.unlink(html_path)
+
+    return output_path
+
+
+@app.route('/api/stoic/entry', methods=['GET'])
+@login_required
+def get_stoic_entry():
+    """Get today's stoic entry info."""
+    entry = get_stoic_entry_for_today()
+    if not entry:
+        return jsonify({'error': 'No entry found for today'}), 404
+
+    return jsonify({
+        'title': entry.get('title', ''),
+        'author': entry.get('author', ''),
+        'quote': entry.get('quote', '')[:200] + '...' if len(entry.get('quote', '')) > 200 else entry.get('quote', ''),
+    })
+
+
+@app.route('/api/stoic/generate', methods=['POST'])
+@login_required
+def generate_stoic_card():
+    """Generate today's stoic card."""
+    try:
+        entry = get_stoic_entry_for_today()
+        if not entry:
+            return jsonify({'error': 'No stoic entry found for today'}), 404
+
+        # Generate trading content
+        content = generate_stoic_trading_content(entry)
+
+        # Generate HTML
+        now = datetime.now()
+        date_str = f"{now.strftime('%B')} {now.day}, {now.year}"
+        html = generate_stoic_card_html(entry, content, date_str)
+
+        # Save HTML and generate PNG
+        os.makedirs(STOIC_ARCHIVE_PATH, exist_ok=True)
+        date_filename = now.strftime('%Y-%m-%d')
+        html_path = os.path.join(STOIC_ARCHIVE_PATH, f'{date_filename}.html')
+        png_path = os.path.join(STOIC_ARCHIVE_PATH, f'{date_filename}.png')
+
+        with open(html_path, 'w') as f:
+            f.write(html)
+
+        html_to_png_stoic(html, png_path)
+
+        # Upload to Cloudinary for preview
+        try:
+            from integrations.cloudinary_client import CloudinaryClient
+            import base64
+            client = CloudinaryClient()
+
+            if client.is_configured():
+                with open(png_path, 'rb') as f:
+                    image_data = base64.b64encode(f.read()).decode('utf-8')
+                upload_result = client.upload_base64(f"data:image/png;base64,{image_data}")
+                image_url = upload_result.get('url', '')
+            else:
+                image_url = f"/static/stoic/{date_filename}.png"
+        except Exception as e:
+            logger.error(f"Failed to upload to cloudinary: {e}")
+            image_url = f"/static/stoic/{date_filename}.png"
+
+        return jsonify({
+            'success': True,
+            'title': entry['title'],
+            'author': entry['author'],
+            'tweet': content['tweet'],
+            'image_url': image_url,
+            'image_path': png_path
+        })
+
+    except ValueError as e:
+        if 'GROQ_API_KEY' in str(e):
+            return jsonify({'error': 'API key not configured. Set GROQ_API_KEY.'}), 500
+        return jsonify({'error': str(e)}), 500
+    except Exception as e:
+        logger.error(f"Stoic card generation failed: {e}")
+        return jsonify({'error': f'Generation failed: {str(e)}'}), 500
+
+
+@app.route('/api/stoic/queue', methods=['POST'])
+@login_required
+def queue_stoic_card():
+    """Add generated stoic card to the post queue."""
+    data = request.json
+    tweet = data.get('tweet')
+    image_path = data.get('image_path')
+
+    if not tweet:
+        return jsonify({'error': 'Missing tweet text'}), 400
+
+    try:
+        db_session = get_session()
+
+        # Create a new post
+        post = Post(
+            content=tweet,
+            media_path=image_path,
+            platform='twitter',
+            status=PostStatus.PENDING.value,
+            created_at=datetime.now(UTC)
+        )
+        db_session.add(post)
+        db_session.commit()
+
+        return jsonify({
+            'success': True,
+            'post_id': post.id
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to queue stoic card: {e}")
+        return jsonify({'error': f'Queue failed: {str(e)}'}), 500
 
 
 def ensure_db_seeded():
