@@ -3258,15 +3258,34 @@ DASHBOARD_TEMPLATE = """
 
     // Stoic Modal Functions
     let stoicCardData = null;
+    let stoicImageData = null;
 
     function openStoicModal() {
         document.getElementById('stoicModal').classList.add('show');
         loadStoicEntry();
+        // Reset state
+        stoicCardData = null;
+        stoicImageData = null;
+        document.getElementById('stoicContent').innerHTML = `
+            <div class="stoic-loading" id="stoicInitial">
+                <p style="color: var(--text-secondary); margin-bottom: 1rem;">Generate today's Stoic trading card</p>
+            </div>
+        `;
+        document.getElementById('stoicActions').innerHTML = `
+            <button class="stoic-btn stoic-btn-cancel" onclick="closeStoicModal()">Cancel</button>
+            <button class="stoic-btn stoic-btn-generate" id="btnStoicGenerate" onclick="generateStoicCard()">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/>
+                </svg>
+                Generate Card
+            </button>
+        `;
     }
 
     function closeStoicModal() {
         document.getElementById('stoicModal').classList.remove('show');
         stoicCardData = null;
+        stoicImageData = null;
     }
 
     async function loadStoicEntry() {
@@ -3288,6 +3307,167 @@ DASHBOARD_TEMPLATE = """
         } catch (err) {
             document.getElementById('stoicEntryTitle').textContent = 'Error loading entry';
         }
+    }
+
+    // Render stoic card to canvas (client-side)
+    async function renderStoicCanvas(data) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = 1080;
+        canvas.height = 1350;
+
+        // Colors
+        const bgColor = '#0F0F0F';
+        const cardBg = '#141414';
+        const accentColor = '#C45A3B';
+        const textColor = '#e6e6e6';
+        const mutedColor = '#888888';
+        const dimColor = '#555555';
+
+        // Background
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Card background (centered)
+        const cardX = 140;
+        const cardY = 100;
+        const cardW = 800;
+        const cardH = 1150;
+        ctx.fillStyle = cardBg;
+        ctx.beginPath();
+        ctx.roundRect(cardX, cardY, cardW, cardH, 20);
+        ctx.fill();
+
+        // Card border
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+
+        const centerX = canvas.width / 2;
+        let y = cardY + 70;
+
+        // Date
+        ctx.fillStyle = dimColor;
+        ctx.font = '12px Georgia';
+        ctx.textAlign = 'center';
+        ctx.letterSpacing = '2px';
+        ctx.fillText(data.date.toUpperCase(), centerX, y);
+        y += 40;
+
+        // Philosopher
+        ctx.fillStyle = accentColor;
+        ctx.font = 'bold 16px Georgia';
+        ctx.fillText(data.author.toUpperCase(), centerX, y);
+        y += 25;
+
+        // Source
+        if (data.source) {
+            ctx.fillStyle = '#666666';
+            ctx.font = 'italic 12px Georgia';
+            ctx.fillText(data.source, centerX, y);
+            y += 30;
+        }
+
+        // Title
+        ctx.fillStyle = textColor;
+        ctx.font = 'italic 32px Georgia';
+        ctx.fillText(data.title, centerX, y);
+        y += 50;
+
+        // Divider
+        const gradient = ctx.createLinearGradient(cardX + 100, y, cardX + cardW - 100, y);
+        gradient.addColorStop(0, 'transparent');
+        gradient.addColorStop(0.5, '#333333');
+        gradient.addColorStop(1, 'transparent');
+        ctx.strokeStyle = gradient;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(cardX + 100, y);
+        ctx.lineTo(cardX + cardW - 100, y);
+        ctx.stroke();
+        y += 50;
+
+        // Three points
+        const points = [
+            { title: data.point1_title, meaning: data.point1_meaning, trading: data.point1_trading },
+            { title: data.point2_title, meaning: data.point2_meaning, trading: data.point2_trading },
+            { title: data.point3_title, meaning: data.point3_meaning, trading: data.point3_trading }
+        ];
+
+        points.forEach((point, i) => {
+            // Point title
+            ctx.fillStyle = accentColor;
+            ctx.font = 'bold 18px Georgia';
+            ctx.fillText((i + 1) + '. ' + point.title, centerX, y);
+            y += 28;
+
+            // Meaning
+            ctx.fillStyle = mutedColor;
+            ctx.font = 'italic 15px Georgia';
+            ctx.fillText(point.meaning, centerX, y);
+            y += 24;
+
+            // Trading application
+            ctx.fillStyle = textColor;
+            ctx.font = '17px Georgia';
+            ctx.fillText(point.trading, centerX, y);
+            y += 55;
+        });
+
+        // Bottom section border
+        y += 10;
+        ctx.strokeStyle = '#1a1a1a';
+        ctx.beginPath();
+        ctx.moveTo(cardX + 70, y);
+        ctx.lineTo(cardX + cardW - 70, y);
+        ctx.stroke();
+        y += 40;
+
+        // Closing wisdom
+        ctx.fillStyle = mutedColor;
+        ctx.font = 'italic 17px Georgia';
+        const wisdomLines = wrapText(ctx, data.closing_wisdom, cardW - 140);
+        wisdomLines.forEach(line => {
+            ctx.fillText(line, centerX, y);
+            y += 26;
+        });
+        y += 20;
+
+        // Key takeaway
+        ctx.fillStyle = accentColor;
+        ctx.font = 'bold 18px Georgia';
+        ctx.fillText(data.key_takeaway, centerX, y);
+        y += 60;
+
+        // CTA
+        ctx.fillStyle = '#777777';
+        ctx.font = 'italic 15px Georgia';
+        ctx.fillText('Track your edge.', centerX, y);
+        y += 28;
+
+        ctx.fillStyle = textColor;
+        ctx.font = 'bold 14px Georgia';
+        ctx.fillText('EDGEOFICT.COM', centerX, y);
+
+        return canvas;
+    }
+
+    function wrapText(ctx, text, maxWidth) {
+        const words = text.split(' ');
+        const lines = [];
+        let line = '';
+
+        words.forEach(word => {
+            const testLine = line + word + ' ';
+            if (ctx.measureText(testLine).width > maxWidth && line) {
+                lines.push(line.trim());
+                line = word + ' ';
+            } else {
+                line = testLine;
+            }
+        });
+        if (line) lines.push(line.trim());
+        return lines;
     }
 
     async function generateStoicCard() {
@@ -3317,9 +3497,13 @@ DASHBOARD_TEMPLATE = """
 
             stoicCardData = data;
 
+            // Render card to canvas
+            const canvas = await renderStoicCanvas(data);
+            stoicImageData = canvas.toDataURL('image/png');
+
             content.innerHTML = `
                 <div class="stoic-preview">
-                    <img src="${data.image_url}" alt="Stoic Card">
+                    <img src="${stoicImageData}" alt="Stoic Card" style="width:100%;border-radius:8px;">
                 </div>
                 <div class="stoic-tweet-preview">
                     <div class="stoic-tweet-label">Tweet Text</div>
@@ -3327,20 +3511,119 @@ DASHBOARD_TEMPLATE = """
                 </div>
             `;
 
-            // Update actions
+            // Update actions with posting buttons
             document.getElementById('stoicActions').innerHTML = `
-                <button class="stoic-btn stoic-btn-cancel" onclick="closeStoicModal()">Close</button>
-                <button class="stoic-btn stoic-btn-queue" onclick="queueStoicCard()">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M12 5v14M5 12h14"/>
-                    </svg>
-                    Add to Queue
-                </button>
+                <div style="display:flex;flex-wrap:wrap;gap:0.5rem;width:100%;">
+                    <button class="stoic-btn stoic-btn-cancel" onclick="closeStoicModal()" style="flex:0 0 auto;">Close</button>
+                    <button class="btn-post-x" onclick="postStoicToX()" style="flex:1;">Post to 𝕏</button>
+                    <button class="btn-post-instagram" onclick="postStoicToInstagram()">📸 Instagram</button>
+                    <button class="btn-post-facebook" onclick="postStoicToFacebook()">📘 Facebook</button>
+                    <button class="stoic-btn stoic-btn-queue" onclick="queueStoicCard()" style="flex:1;">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <path d="M12 5v14M5 12h14"/>
+                        </svg>
+                        Add to Queue
+                    </button>
+                </div>
             `;
         } catch (err) {
             content.innerHTML = `<div class="stoic-error">Failed to generate: ${err.message}</div>`;
             btn.disabled = false;
             btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg> Retry`;
+        }
+    }
+
+    async function postStoicToX() {
+        if (!stoicCardData) return;
+        // Open tweet intent with the text
+        const text = encodeURIComponent(stoicCardData.tweet);
+        window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
+        showToast('Opening X to post...');
+    }
+
+    async function postStoicToInstagram() {
+        if (!stoicCardData || !stoicImageData) return;
+
+        const btn = event.target;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = 'Uploading...';
+
+        try {
+            // Upload to Cloudinary
+            const uploadRes = await fetch('/api/cloudinary/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: stoicImageData })
+            });
+            const uploadData = await uploadRes.json();
+
+            if (uploadData.error) throw new Error(uploadData.error);
+
+            btn.innerHTML = 'Posting...';
+
+            // Post to Instagram
+            const postRes = await fetch('/api/post/instagram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    image_url: uploadData.url,
+                    caption: stoicCardData.tweet
+                })
+            });
+            const postData = await postRes.json();
+
+            if (postData.error) throw new Error(postData.error);
+
+            showToast('Posted to Instagram!');
+            btn.innerHTML = '✓ Posted';
+        } catch (err) {
+            showToast('Instagram error: ' + err.message, true);
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    }
+
+    async function postStoicToFacebook() {
+        if (!stoicCardData || !stoicImageData) return;
+
+        const btn = event.target;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = 'Uploading...';
+
+        try {
+            // Upload to Cloudinary
+            const uploadRes = await fetch('/api/cloudinary/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: stoicImageData })
+            });
+            const uploadData = await uploadRes.json();
+
+            if (uploadData.error) throw new Error(uploadData.error);
+
+            btn.innerHTML = 'Posting...';
+
+            // Post to Facebook
+            const postRes = await fetch('/api/post/facebook', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    content: stoicCardData.tweet,
+                    image_url: uploadData.url
+                })
+            });
+            const postData = await postRes.json();
+
+            if (postData.error) throw new Error(postData.error);
+
+            showToast('Posted to Facebook!');
+            btn.innerHTML = '✓ Posted';
+        } catch (err) {
+            showToast('Facebook error: ' + err.message, true);
+            btn.disabled = false;
+            btn.innerHTML = originalText;
         }
     }
 
@@ -3351,15 +3634,12 @@ DASHBOARD_TEMPLATE = """
             const response = await fetch('/api/stoic/queue', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    tweet: stoicCardData.tweet,
-                    image_path: stoicCardData.image_path
-                })
+                body: JSON.stringify({ tweet: stoicCardData.tweet })
             });
             const data = await response.json();
 
             if (data.error) {
-                alert('Failed to queue: ' + data.error);
+                showToast('Failed to queue: ' + data.error, true);
                 return;
             }
 
@@ -3386,7 +3666,7 @@ DASHBOARD_TEMPLATE = """
             closeStoicModal();
             showToast('Stoic card added to queue!');
         } catch (err) {
-            alert('Failed to queue: ' + err.message);
+            showToast('Failed to queue: ' + err.message, true);
         }
     }
 
@@ -4312,55 +4592,43 @@ def get_stoic_entry():
 @app.route('/api/stoic/generate', methods=['POST'])
 @login_required
 def generate_stoic_card():
-    """Generate today's stoic card."""
+    """Generate today's stoic card content (client renders the image)."""
     try:
         entry = get_stoic_entry_for_today()
         if not entry:
             return jsonify({'error': 'No stoic entry found for today'}), 404
 
-        # Generate trading content
+        # Generate trading content via AI
         content = generate_stoic_trading_content(entry)
 
-        # Generate HTML
+        # Format date
         now = datetime.now()
         date_str = f"{now.strftime('%B')} {now.day}, {now.year}"
-        html = generate_stoic_card_html(entry, content, date_str)
 
-        # Save HTML and generate PNG
-        os.makedirs(STOIC_ARCHIVE_PATH, exist_ok=True)
-        date_filename = now.strftime('%Y-%m-%d')
-        html_path = os.path.join(STOIC_ARCHIVE_PATH, f'{date_filename}.html')
-        png_path = os.path.join(STOIC_ARCHIVE_PATH, f'{date_filename}.png')
+        # Clean up source
+        source = entry.get('source', '')
+        if source and source.isupper():
+            source = source.title()
 
-        with open(html_path, 'w') as f:
-            f.write(html)
-
-        html_to_png_stoic(html, png_path)
-
-        # Upload to Cloudinary for preview
-        try:
-            from integrations.cloudinary_client import CloudinaryClient
-            import base64
-            client = CloudinaryClient()
-
-            if client.is_configured():
-                with open(png_path, 'rb') as f:
-                    image_data = base64.b64encode(f.read()).decode('utf-8')
-                upload_result = client.upload_base64(f"data:image/png;base64,{image_data}")
-                image_url = upload_result.get('url', '')
-            else:
-                image_url = f"/static/stoic/{date_filename}.png"
-        except Exception as e:
-            logger.error(f"Failed to upload to cloudinary: {e}")
-            image_url = f"/static/stoic/{date_filename}.png"
-
+        # Return all data for client-side rendering
         return jsonify({
             'success': True,
+            'date': date_str,
             'title': entry['title'],
             'author': entry['author'],
-            'tweet': content['tweet'],
-            'image_url': image_url,
-            'image_path': png_path
+            'source': source,
+            'point1_title': content['point1_title'],
+            'point1_meaning': content['point1_meaning'],
+            'point1_trading': content['point1_trading'],
+            'point2_title': content['point2_title'],
+            'point2_meaning': content['point2_meaning'],
+            'point2_trading': content['point2_trading'],
+            'point3_title': content['point3_title'],
+            'point3_meaning': content['point3_meaning'],
+            'point3_trading': content['point3_trading'],
+            'closing_wisdom': content['closing_wisdom'],
+            'key_takeaway': content['key_takeaway'],
+            'tweet': content['tweet']
         })
 
     except ValueError as e:
