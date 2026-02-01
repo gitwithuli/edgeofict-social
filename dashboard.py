@@ -2172,6 +2172,7 @@ DASHBOARD_TEMPLATE = """
             const status = card.classList.contains('posted') ? 'posted' :
                            card.classList.contains('approved') ? 'approved' :
                            card.classList.contains('pending') ? 'pending' : 'quote';
+            const imageUrl = card.dataset.imageUrl || null;
 
             let content;
             if (type === 'post') {
@@ -2188,7 +2189,13 @@ DASHBOARD_TEMPLATE = """
             }
 
             // Format content with styled hashtags
-            const formattedContent = content.replace(/#(\\w+)/g, '<span class="x-hashtag">#$1</span>');
+            let formattedContent = content.replace(/#(\\w+)/g, '<span class="x-hashtag">#$1</span>');
+
+            // If post has an image (stoic card), show it above the content
+            if (imageUrl) {
+                formattedContent = '<img src="' + imageUrl + '" style="width:100%;border-radius:8px;margin-bottom:12px;">' + formattedContent;
+            }
+
             document.getElementById('modal-content').innerHTML = formattedContent;
             document.getElementById('modal-chars').textContent = content.length + '/280';
             document.getElementById('modal-chars').className = 'x-char-count ' + (content.length <= 250 ? 'char-ok' : content.length <= 280 ? 'char-warn' : 'char-over');
@@ -2210,15 +2217,18 @@ DASHBOARD_TEMPLATE = """
                 const tweetUrl = 'https://twitter.com/intent/tweet?text=' + encodeURIComponent(content);
                 postBtn.href = tweetUrl;
                 postBtn.style.display = 'block';
-                imgBtn.style.display = 'block';
+                // Hide image generator if post already has an image
+                imgBtn.style.display = imageUrl ? 'none' : 'block';
                 igBtn.style.display = 'block';
                 fbBtn.style.display = 'block';
-                // Store content for posting functions
+                // Store content and image URL for posting functions
                 imgBtn.dataset.content = content;
                 igBtn.dataset.content = content;
                 igBtn.dataset.postId = card.dataset.id || '';
+                igBtn.dataset.imageUrl = imageUrl || '';
                 fbBtn.dataset.content = content;
                 fbBtn.dataset.postId = card.dataset.id || '';
+                fbBtn.dataset.imageUrl = imageUrl || '';
             } else {
                 postBtn.style.display = 'none';
                 imgBtn.style.display = 'none';
@@ -3094,10 +3104,11 @@ DASHBOARD_TEMPLATE = """
         return canvas;
     }
 
-    // Post to Instagram from modal (generates image, uploads to Cloudinary, posts)
+    // Post to Instagram from modal (uses existing image or generates new one)
     async function postToInstagramFromModal() {
         const btn = document.getElementById('btn-post-instagram');
         const content = btn.dataset.content;
+        const existingImageUrl = btn.dataset.imageUrl;
 
         if (!content) {
             showToast('No content to post', true);
@@ -3105,35 +3116,42 @@ DASHBOARD_TEMPLATE = """
         }
 
         btn.disabled = true;
-        btn.textContent = 'Generating...';
 
         try {
-            // Generate image
-            const canvas = await generateTweetCanvas(content);
-            const imageData = canvas.toDataURL('image/png');
+            let imageUrl;
 
-            btn.textContent = 'Uploading...';
+            // Use existing image URL if available (stoic cards), otherwise generate
+            if (existingImageUrl) {
+                btn.textContent = 'Posting...';
+                imageUrl = existingImageUrl;
+            } else {
+                btn.textContent = 'Generating...';
+                const canvas = await generateTweetCanvas(content);
+                const imageData = canvas.toDataURL('image/png');
 
-            // Upload to Cloudinary
-            const uploadResp = await fetch('/api/cloudinary/upload', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({image: imageData})
-            });
-            const uploadData = await uploadResp.json();
+                btn.textContent = 'Uploading...';
 
-            if (!uploadResp.ok || !uploadData.secure_url) {
-                throw new Error(uploadData.error || 'Failed to upload image');
+                const uploadResp = await fetch('/api/cloudinary/upload', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({image: imageData})
+                });
+                const uploadData = await uploadResp.json();
+
+                if (!uploadResp.ok || !uploadData.secure_url) {
+                    throw new Error(uploadData.error || 'Failed to upload image');
+                }
+
+                btn.textContent = 'Posting...';
+                imageUrl = uploadData.secure_url;
             }
-
-            btn.textContent = 'Posting...';
 
             // Post to Instagram
             const postResp = await fetch('/api/post/instagram', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
-                    image_url: uploadData.secure_url,
+                    image_url: imageUrl,
                     caption: content
                 })
             });
@@ -3160,10 +3178,11 @@ DASHBOARD_TEMPLATE = """
         }
     }
 
-    // Post to Facebook from modal (posts text)
+    // Post to Facebook from modal (uses existing image or generates new one)
     async function postToFacebookFromModal() {
         const btn = document.getElementById('btn-post-facebook');
         const content = btn.dataset.content;
+        const existingImageUrl = btn.dataset.imageUrl;
 
         if (!content) {
             showToast('No content to post', true);
@@ -3171,33 +3190,42 @@ DASHBOARD_TEMPLATE = """
         }
 
         btn.disabled = true;
-        btn.textContent = 'Generating...';
 
         try {
-            const canvas = await generateTweetCanvas(content);
-            const imageData = canvas.toDataURL('image/png');
+            let imageUrl;
 
-            btn.textContent = 'Uploading...';
+            // Use existing image URL if available (stoic cards), otherwise generate
+            if (existingImageUrl) {
+                btn.textContent = 'Posting...';
+                imageUrl = existingImageUrl;
+            } else {
+                btn.textContent = 'Generating...';
+                const canvas = await generateTweetCanvas(content);
+                const imageData = canvas.toDataURL('image/png');
 
-            const uploadResp = await fetch('/api/cloudinary/upload', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({image: imageData})
-            });
+                btn.textContent = 'Uploading...';
 
-            const uploadData = await uploadResp.json();
-            if (!uploadResp.ok || !uploadData.secure_url) {
-                throw new Error(uploadData.error || 'Failed to upload image');
+                const uploadResp = await fetch('/api/cloudinary/upload', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({image: imageData})
+                });
+
+                const uploadData = await uploadResp.json();
+                if (!uploadResp.ok || !uploadData.secure_url) {
+                    throw new Error(uploadData.error || 'Failed to upload image');
+                }
+
+                btn.textContent = 'Posting...';
+                imageUrl = uploadData.secure_url;
             }
-
-            btn.textContent = 'Posting...';
 
             const resp = await fetch('/api/post/facebook', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({
                     content: content,
-                    image_url: uploadData.secure_url
+                    image_url: imageUrl
                 })
             });
 
@@ -3641,28 +3669,54 @@ DASHBOARD_TEMPLATE = """
     }
 
     async function queueStoicCard() {
-        if (!stoicCardData) return;
+        if (!stoicCardData || !stoicImageData) return;
+
+        const btn = event.target;
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = 'Uploading image...';
 
         try {
+            // First upload image to Cloudinary so it persists
+            const uploadRes = await fetch('/api/cloudinary/upload', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: stoicImageData })
+            });
+            const uploadData = await uploadRes.json();
+
+            if (uploadData.error) {
+                throw new Error(uploadData.error);
+            }
+
+            btn.innerHTML = 'Adding to queue...';
+
+            // Queue with image URL
             const response = await fetch('/api/stoic/queue', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ tweet: stoicCardData.tweet })
+                body: JSON.stringify({
+                    tweet: stoicCardData.tweet,
+                    image_url: uploadData.url
+                })
             });
             const data = await response.json();
 
             if (data.error) {
                 showToast('Failed to queue: ' + data.error, true);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
                 return;
             }
 
-            // Add card to pending column
+            // Add card to pending column with image data
             const pendingColumn = document.querySelector('.col-pending .column-body');
             const newCard = document.createElement('div');
             newCard.className = 'card pending';
             newCard.dataset.type = 'post';
             newCard.dataset.id = data.post_id;
             newCard.dataset.fullContent = JSON.stringify(stoicCardData.tweet);
+            newCard.dataset.imageUrl = uploadData.url;
             newCard.innerHTML = `
                 <div class="card-content">${stoicCardData.tweet.substring(0, 140)}${stoicCardData.tweet.length > 140 ? '...' : ''}</div>
                 <div class="card-meta post-meta">
@@ -3680,6 +3734,8 @@ DASHBOARD_TEMPLATE = """
             showToast('Stoic card added to queue!');
         } catch (err) {
             showToast('Failed to queue: ' + err.message, true);
+            btn.disabled = false;
+            btn.innerHTML = originalText;
         }
     }
 
@@ -4657,7 +4713,7 @@ def queue_stoic_card():
     """Add generated stoic card to the post queue."""
     data = request.json
     tweet = data.get('tweet')
-    image_path = data.get('image_path')
+    image_url = data.get('image_url')
 
     if not tweet:
         return jsonify({'error': 'Missing tweet text'}), 400
@@ -4665,10 +4721,10 @@ def queue_stoic_card():
     try:
         db_session = get_session()
 
-        # Create a new post
+        # Create a new post with image URL
         post = Post(
             content=tweet,
-            media_path=image_path,
+            media_path=image_url,  # Store Cloudinary URL
             platform='twitter',
             status=PostStatus.PENDING.value,
             created_at=datetime.now(UTC)
@@ -4678,7 +4734,8 @@ def queue_stoic_card():
 
         return jsonify({
             'success': True,
-            'post_id': post.id
+            'post_id': post.id,
+            'image_url': image_url
         })
 
     except Exception as e:
