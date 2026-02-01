@@ -4060,8 +4060,8 @@ def post_to_social():
 # Stoic Card API Endpoints
 # =============================================================================
 
-STOIC_DATA_PATH = os.path.join(os.path.expanduser('~'), 'clawd', 'data', 'daily_stoic.json')
-STOIC_ARCHIVE_PATH = os.path.join(os.path.expanduser('~'), 'clawd', 'stoic-trader-archive')
+STOIC_DATA_PATH = os.path.join(os.path.dirname(__file__), 'data', 'daily_stoic.json')
+STOIC_ARCHIVE_PATH = os.path.join(os.path.dirname(__file__), 'stoic-archive')
 
 
 def load_stoic_entries():
