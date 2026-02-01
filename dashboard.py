@@ -3556,6 +3556,7 @@ DASHBOARD_TEMPLATE = """
             document.getElementById('stoicActions').innerHTML = `
                 <div style="display:flex;flex-wrap:wrap;gap:0.5rem;width:100%;">
                     <button class="stoic-btn stoic-btn-cancel" onclick="closeStoicModal()" style="flex:0 0 auto;">Close</button>
+                    <button class="stoic-btn" onclick="downloadStoicImage()" style="background:#374151;flex:0 0 auto;">⬇ Download</button>
                     <button class="btn-post-x" onclick="postStoicToX()" style="flex:1;">Post to 𝕏</button>
                     <button class="btn-post-instagram" onclick="postStoicToInstagram()">📸 Instagram</button>
                     <button class="btn-post-facebook" onclick="postStoicToFacebook()">📘 Facebook</button>
@@ -3580,6 +3581,29 @@ DASHBOARD_TEMPLATE = """
         const text = encodeURIComponent(stoicCardData.tweet);
         window.open(`https://twitter.com/intent/tweet?text=${text}`, '_blank');
         showToast('Opening X to post...');
+    }
+
+    function downloadStoicImage() {
+        if (!stoicImageData) {
+            showToast('No image to download', true);
+            return;
+        }
+
+        // Create download link
+        const link = document.createElement('a');
+        link.href = stoicImageData;
+
+        // Generate filename with date
+        const now = new Date();
+        const dateStr = now.toISOString().split('T')[0];
+        link.download = `stoic-card-${dateStr}.png`;
+
+        // Trigger download
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+
+        showToast('Image downloaded!');
     }
 
     async function postStoicToInstagram() {
