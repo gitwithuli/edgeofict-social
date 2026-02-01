@@ -37,14 +37,8 @@ app.config.update(
 )
 
 def login_required(f):
-    """Decorator to require Cloudflare Access authentication."""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        user_email = request.headers.get('Cf-Access-Authenticated-User-Email')
-        if not user_email:
-            return jsonify({'error': 'Authentication required'}), 401
-        return f(*args, **kwargs)
-    return decorated_function
+    """No-op decorator - Cloudflare Access handles authentication at the edge."""
+    return f
 
 
 @app.route('/login', methods=['GET', 'POST'])
