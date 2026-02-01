@@ -36,160 +36,21 @@ app.config.update(
     MAX_CONTENT_LENGTH=50 * 1024 * 1024  # 50MB max upload
 )
 
-# Dashboard password from environment (no default - must be set)
-DASHBOARD_PASSWORD = os.getenv('DASHBOARD_PASSWORD')
-
-
 def login_required(f):
-    """Decorator to require login for routes."""
+    """Decorator to require Cloudflare Access authentication."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if not session.get('authenticated'):
-            if request.is_json:
-                return jsonify({'error': 'Authentication required'}), 401
-            return redirect(url_for('login'))
+        user_email = request.headers.get('Cf-Access-Authenticated-User-Email')
+        if not user_email:
+            return jsonify({'error': 'Authentication required'}), 401
         return f(*args, **kwargs)
     return decorated_function
 
 
-LOGIN_TEMPLATE = """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - EdgeOfICT Social</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            font-family: 'Outfit', sans-serif;
-            background: #08090a;
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .login-container {
-            background: #0d1117;
-            border: 1px solid #21262d;
-            border-radius: 16px;
-            padding: 2.5rem;
-            width: 100%;
-            max-width: 380px;
-        }
-        .login-header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-        .login-title {
-            color: #e6edf3;
-            font-size: 1.5rem;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-        }
-        .login-subtitle {
-            color: #8b949e;
-            font-size: 0.9rem;
-        }
-        .form-group {
-            margin-bottom: 1.5rem;
-        }
-        .form-label {
-            display: block;
-            color: #8b949e;
-            font-size: 0.85rem;
-            margin-bottom: 0.5rem;
-        }
-        .form-input {
-            width: 100%;
-            padding: 0.75rem 1rem;
-            background: #161b22;
-            border: 1px solid #30363d;
-            border-radius: 8px;
-            color: #e6edf3;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1rem;
-            transition: border-color 0.2s;
-        }
-        .form-input:focus {
-            outline: none;
-            border-color: #00d4ff;
-        }
-        .btn-login {
-            width: 100%;
-            padding: 0.875rem;
-            background: linear-gradient(135deg, #00d4ff, #a78bfa);
-            border: none;
-            border-radius: 8px;
-            color: white;
-            font-family: 'Outfit', sans-serif;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.2s;
-        }
-        .btn-login:hover {
-            opacity: 0.9;
-        }
-        .error-msg {
-            background: rgba(248, 113, 113, 0.1);
-            border: 1px solid rgba(248, 113, 113, 0.3);
-            color: #f87171;
-            padding: 0.75rem;
-            border-radius: 8px;
-            margin-bottom: 1.5rem;
-            font-size: 0.9rem;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="login-container">
-        <div class="login-header">
-            <h1 class="login-title">EdgeOfICT Social</h1>
-            <p class="login-subtitle">Enter password to access dashboard</p>
-        </div>
-        {% if error %}
-        <div class="error-msg">{{ error }}</div>
-        {% endif %}
-        <form method="POST">
-            <div class="form-group">
-                <label class="form-label" for="password">Password</label>
-                <input type="password" id="password" name="password" class="form-input" placeholder="Enter dashboard password" autofocus required>
-            </div>
-            <button type="submit" class="btn-login">Sign In</button>
-        </form>
-    </div>
-</body>
-</html>
-"""
-
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login page."""
-    if session.get('authenticated'):
-        return redirect(url_for('dashboard'))
-
-    error = None
-    if request.method == 'POST':
-        password = request.form.get('password', '')
-        # Check if password is configured
-        if not DASHBOARD_PASSWORD:
-            logger.error("DASHBOARD_PASSWORD environment variable not set")
-            error = 'Server configuration error'
-        # Use timing-safe comparison to prevent timing attacks
-        elif secrets.compare_digest(password.encode(), DASHBOARD_PASSWORD.encode()):
-            session['authenticated'] = True
-            session.permanent = True
-            return redirect(url_for('dashboard'))
-        else:
-            error = 'Invalid password'
-
-    return render_template_string(LOGIN_TEMPLATE, error=error)
+    """Redirect to dashboard - auth handled by Cloudflare Access."""
+    return redirect(url_for('dashboard'))
 
 
 @app.route('/logout')
