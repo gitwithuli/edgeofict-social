@@ -3309,85 +3309,86 @@ DASHBOARD_TEMPLATE = """
         }
     }
 
-    // Render stoic card to canvas (client-side)
+    // Render stoic card to canvas (client-side) - matches original aesthetic
     async function renderStoicCanvas(data) {
         const canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d');
         canvas.width = 1080;
         canvas.height = 1350;
 
-        // Colors
-        const bgColor = '#0F0F0F';
-        const cardBg = '#141414';
+        // Colors matching original
+        const bgColor = '#0a0a0a';
+        const cardBg = '#111111';
         const accentColor = '#C45A3B';
-        const textColor = '#e6e6e6';
-        const mutedColor = '#888888';
-        const dimColor = '#555555';
+        const textColor = '#e8e8e8';
+        const mutedColor = '#7a7a7a';
+        const dimColor = '#505050';
+        const borderColor = '#1a1a1a';
 
         // Background
         ctx.fillStyle = bgColor;
         ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // Card background (centered)
-        const cardX = 140;
-        const cardY = 100;
-        const cardW = 800;
-        const cardH = 1150;
-        ctx.fillStyle = cardBg;
+        // Card background (centered, larger)
+        const cardX = 90;
+        const cardY = 120;
+        const cardW = 900;
+        const cardH = 1110;
+
+        // Card with subtle gradient
+        const cardGrad = ctx.createLinearGradient(cardX, cardY, cardX, cardY + cardH);
+        cardGrad.addColorStop(0, '#151515');
+        cardGrad.addColorStop(1, '#0d0d0d');
+        ctx.fillStyle = cardGrad;
         ctx.beginPath();
-        ctx.roundRect(cardX, cardY, cardW, cardH, 20);
+        ctx.roundRect(cardX, cardY, cardW, cardH, 24);
         ctx.fill();
 
         // Card border
-        ctx.strokeStyle = '#1a1a1a';
+        ctx.strokeStyle = borderColor;
         ctx.lineWidth = 1;
         ctx.stroke();
 
         const centerX = canvas.width / 2;
-        let y = cardY + 70;
+        let y = cardY + 90;
 
-        // Date
+        // Date - with letter spacing simulation
         ctx.fillStyle = dimColor;
-        ctx.font = '12px Georgia';
+        ctx.font = '14px Georgia';
         ctx.textAlign = 'center';
-        ctx.letterSpacing = '2px';
-        ctx.fillText(data.date.toUpperCase(), centerX, y);
-        y += 40;
-
-        // Philosopher
-        ctx.fillStyle = accentColor;
-        ctx.font = 'bold 16px Georgia';
-        ctx.fillText(data.author.toUpperCase(), centerX, y);
-        y += 25;
-
-        // Source
-        if (data.source) {
-            ctx.fillStyle = '#666666';
-            ctx.font = 'italic 12px Georgia';
-            ctx.fillText(data.source, centerX, y);
-            y += 30;
-        }
-
-        // Title
-        ctx.fillStyle = textColor;
-        ctx.font = 'italic 32px Georgia';
-        ctx.fillText(data.title, centerX, y);
+        const dateText = data.date.toUpperCase();
+        ctx.fillText(addLetterSpacing(dateText, 3), centerX, y);
         y += 50;
 
-        // Divider
-        const gradient = ctx.createLinearGradient(cardX + 100, y, cardX + cardW - 100, y);
+        // Philosopher - prominent with letter spacing
+        ctx.fillStyle = accentColor;
+        ctx.font = '600 18px Georgia';
+        const authorText = data.author.toUpperCase();
+        ctx.fillText(addLetterSpacing(authorText, 4), centerX, y);
+        y += 45;
+
+        // Title - large italic
+        ctx.fillStyle = textColor;
+        ctx.font = 'italic 42px Georgia';
+        ctx.fillText(data.title, centerX, y);
+        y += 70;
+
+        // Divider - elegant gradient line
+        const gradient = ctx.createLinearGradient(centerX - 250, y, centerX + 250, y);
         gradient.addColorStop(0, 'transparent');
-        gradient.addColorStop(0.5, '#333333');
+        gradient.addColorStop(0.2, '#333333');
+        gradient.addColorStop(0.5, '#444444');
+        gradient.addColorStop(0.8, '#333333');
         gradient.addColorStop(1, 'transparent');
         ctx.strokeStyle = gradient;
         ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(cardX + 100, y);
-        ctx.lineTo(cardX + cardW - 100, y);
+        ctx.moveTo(centerX - 250, y);
+        ctx.lineTo(centerX + 250, y);
         ctx.stroke();
-        y += 50;
+        y += 65;
 
-        // Three points
+        // Three points with better spacing
         const points = [
             { title: data.point1_title, meaning: data.point1_meaning, trading: data.point1_trading },
             { title: data.point2_title, meaning: data.point2_meaning, trading: data.point2_trading },
@@ -3395,61 +3396,73 @@ DASHBOARD_TEMPLATE = """
         ];
 
         points.forEach((point, i) => {
-            // Point title
+            // Point title - orange, bold
             ctx.fillStyle = accentColor;
-            ctx.font = 'bold 18px Georgia';
+            ctx.font = 'bold 22px Georgia';
             ctx.fillText((i + 1) + '. ' + point.title, centerX, y);
-            y += 28;
+            y += 35;
 
-            // Meaning
+            // Meaning - italic, muted
             ctx.fillStyle = mutedColor;
-            ctx.font = 'italic 15px Georgia';
+            ctx.font = 'italic 18px Georgia';
             ctx.fillText(point.meaning, centerX, y);
-            y += 24;
+            y += 32;
 
-            // Trading application
+            // Trading application - white, clear
             ctx.fillStyle = textColor;
-            ctx.font = '17px Georgia';
+            ctx.font = '20px Georgia';
             ctx.fillText(point.trading, centerX, y);
-            y += 55;
+            y += 70;
         });
 
-        // Bottom section border
-        y += 10;
-        ctx.strokeStyle = '#1a1a1a';
+        // Bottom section divider
+        y += 5;
+        const bottomGrad = ctx.createLinearGradient(centerX - 280, y, centerX + 280, y);
+        bottomGrad.addColorStop(0, 'transparent');
+        bottomGrad.addColorStop(0.15, '#222222');
+        bottomGrad.addColorStop(0.5, '#2a2a2a');
+        bottomGrad.addColorStop(0.85, '#222222');
+        bottomGrad.addColorStop(1, 'transparent');
+        ctx.strokeStyle = bottomGrad;
         ctx.beginPath();
-        ctx.moveTo(cardX + 70, y);
-        ctx.lineTo(cardX + cardW - 70, y);
+        ctx.moveTo(centerX - 280, y);
+        ctx.lineTo(centerX + 280, y);
         ctx.stroke();
-        y += 40;
+        y += 50;
 
-        // Closing wisdom
+        // Closing wisdom - italic
         ctx.fillStyle = mutedColor;
-        ctx.font = 'italic 17px Georgia';
-        const wisdomLines = wrapText(ctx, data.closing_wisdom, cardW - 140);
+        ctx.font = 'italic 20px Georgia';
+        const wisdomLines = wrapText(ctx, data.closing_wisdom, cardW - 180);
         wisdomLines.forEach(line => {
             ctx.fillText(line, centerX, y);
-            y += 26;
+            y += 32;
         });
-        y += 20;
+        y += 25;
 
-        // Key takeaway
+        // Key takeaway - bold orange
         ctx.fillStyle = accentColor;
-        ctx.font = 'bold 18px Georgia';
+        ctx.font = 'bold 22px Georgia';
         ctx.fillText(data.key_takeaway, centerX, y);
-        y += 60;
+        y += 70;
 
-        // CTA
-        ctx.fillStyle = '#777777';
-        ctx.font = 'italic 15px Georgia';
+        // CTA - Track your edge
+        ctx.fillStyle = '#666666';
+        ctx.font = 'italic 17px Georgia';
         ctx.fillText('Track your edge.', centerX, y);
-        y += 28;
+        y += 35;
 
+        // EDGEOFICT.COM - bold with letter spacing
         ctx.fillStyle = textColor;
-        ctx.font = 'bold 14px Georgia';
-        ctx.fillText('EDGEOFICT.COM', centerX, y);
+        ctx.font = 'bold 16px Georgia';
+        ctx.fillText(addLetterSpacing('EDGEOFICT.COM', 2), centerX, y);
 
         return canvas;
+    }
+
+    // Helper to simulate letter-spacing
+    function addLetterSpacing(text, spacing) {
+        return text.split('').join(String.fromCharCode(8202).repeat(spacing));
     }
 
     function wrapText(ctx, text, maxWidth) {
