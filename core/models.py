@@ -77,14 +77,9 @@ class Analytics(Base):
 
 def get_engine(db_url=None):
     if db_url is None:
-        turso_url = os.getenv('TURSO_DATABASE_URL')
-        turso_token = os.getenv('TURSO_AUTH_TOKEN')
+        db_url = os.getenv('DATABASE_URL')
 
-        if turso_url and turso_token:
-            # sqlalchemy-libsql: token must be in connect_args, not URL
-            db_url = f"sqlite+{turso_url}?secure=true"
-            return create_engine(db_url, connect_args={"auth_token": turso_token})
-        else:
+        if not db_url:
             db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'quotes.db')
             os.makedirs(os.path.dirname(db_path), exist_ok=True)
             db_url = f"sqlite:///{db_path}"
