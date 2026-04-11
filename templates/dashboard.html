@@ -1,0 +1,454 @@
+{% extends "base.html" %}
+
+{% block body_class %}dashboard-body{% endblock %}
+
+{% block body %}
+<main class="page-shell">
+    <header class="topbar">
+        <div class="topbar-copy">
+            <div class="eyebrow">EdgeOfICT Social Agent</div>
+            <h1>{{ config.APP_TITLE }}</h1>
+            <p>Hosted queue control, document intake, and publishing in one place.</p>
+        </div>
+
+        <div class="topbar-actions">
+            <div class="profile-pill">
+                <img src="{{ profile.picture_url }}" alt="{{ profile.name }}" class="profile-photo">
+                <div>
+                    <div class="profile-name">{{ profile.name }}</div>
+                    <div class="profile-handle">{{ profile.handle }}</div>
+                </div>
+            </div>
+            <form method="post" action="{{ url_for('logout') }}">
+                <button type="submit" class="btn btn-secondary">Log Out</button>
+            </form>
+        </div>
+    </header>
+
+    {% with flashes = get_flashed_messages(with_categories=true) %}
+    {% if flashes %}
+    <section class="flash-stack">
+        {% for category, message in flashes %}
+        <div class="flash flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+    </section>
+    {% endif %}
+    {% endwith %}
+
+    <section class="mast-grid">
+        <article class="panel hero-panel">
+            <div class="hero-badges">
+                <span class="pill">DB: {{ database_label }}</span>
+                <span class="pill pill-muted">{{ "Password auth" if auth_enabled else "Auth disabled" }}</span>
+                <span class="pill pill-muted">Free-host ready</span>
+            </div>
+            <h2>Replace the self-hosted box with a stable control surface.</h2>
+            <p>This build keeps the existing quote extraction and post generation workflows, but moves day-to-day operation into a cleaner hosted dashboard.</p>
+            <div class="hero-foot">
+                <div>
+                    <span class="label">Next scheduled</span>
+                    <strong>{{ next_scheduled.scheduled_time | datetime_human if next_scheduled else "No post scheduled" }}</strong>
+                </div>
+                <div>
+                    <span class="label">Queue posture</span>
+                    <strong>{{ stats.posts_pending }} drafts / {{ stats.posts_approved }} approved</strong>
+                </div>
+            </div>
+        </article>
+
+        <div class="stats-grid">
+            <article class="stat-card">
+                <span class="label">Quotes</span>
+                <strong>{{ stats.quotes_total }}</strong>
+                <span class="stat-sub">{{ stats.quotes_pending }} awaiting review</span>
+            </article>
+            <article class="stat-card">
+                <span class="label">Approved Quotes</span>
+                <strong>{{ stats.quotes_approved }}</strong>
+                <span class="stat-sub">Ready for queue creation</span>
+            </article>
+            <article class="stat-card">
+                <span class="label">Draft Posts</span>
+                <strong>{{ stats.posts_pending }}</strong>
+                <span class="stat-sub">Needs editing or approval</span>
+            </article>
+            <article class="stat-card">
+                <span class="label">Published</span>
+                <strong>{{ stats.posts_posted }}</strong>
+                <span class="stat-sub">Posted to X from this queue</span>
+            </article>
+        </div>
+    </section>
+
+    <section class="ops-grid">
+        <article class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Intake</span>
+                    <h3>Import Source Document</h3>
+                </div>
+            </div>
+            <form method="post" action="{{ url_for('extract_quotes') }}" enctype="multipart/form-data" class="stack-form">
+                <label>
+                    <span>PDF, DOCX, or TXT</span>
+                    <input type="file" name="document" accept=".pdf,.docx,.txt" required>
+                </label>
+                <button type="submit" class="btn btn-primary btn-block">Extract Quotes</button>
+            </form>
+        </article>
+
+        <article class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Queue Builder</span>
+                    <h3>Generate Posts</h3>
+                </div>
+            </div>
+            <form method="post" action="{{ url_for('generate_posts') }}" class="stack-form">
+                <div class="field-row">
+                    <label>
+                        <span>Days</span>
+                        <input type="number" name="days" min="1" max="30" value="7">
+                    </label>
+                    <label>
+                        <span>Posts / day</span>
+                        <input type="number" name="posts_per_day" min="1" max="6" value="1">
+                    </label>
+                </div>
+                <label class="checkline">
+                    <input type="checkbox" name="use_ai" value="true" checked>
+                    <span>Use Anthropic formatting when available</span>
+                </label>
+                <button type="submit" class="btn btn-secondary btn-block">Generate Queue</button>
+            </form>
+        </article>
+
+        <article class="panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Library</span>
+                    <h3>Source Documents</h3>
+                </div>
+            </div>
+            {% if documents %}
+            <div class="source-list">
+                {% for source, quote_count in documents %}
+                <div class="source-row">
+                    <span>{{ source or "Unknown" }}</span>
+                    <span>{{ quote_count }} quotes</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">No documents imported yet.</div>
+            {% endif %}
+        </article>
+
+        <article class="panel integrations-panel">
+            <div class="panel-head">
+                <div>
+                    <span class="eyebrow">Connections</span>
+                    <h3>Integration Status</h3>
+                </div>
+                <button type="button" class="btn btn-ghost" id="refresh-integrations">Verify Live</button>
+            </div>
+
+            <div class="integration-grid" id="integration-grid">
+                {% for key, item in integration_hints.items() %}
+                <article class="integration-card state-{{ 'ready' if item.configured else 'missing' }}" data-integration-card="{{ key }}">
+                    <div class="integration-head">
+                        <strong>{{ item.label }}</strong>
+                        <span class="status-chip">{{ "Loaded" if item.configured else "Missing" }}</span>
+                    </div>
+                    <p>{{ item.detail }}</p>
+                    <div class="integration-live">Not checked yet.</div>
+                </article>
+                {% endfor %}
+            </div>
+        </article>
+    </section>
+
+    <section class="section-block">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Daily Stoic</span>
+                <h2>Stoic Workbench</h2>
+            </div>
+            <span class="section-meta">The source is already in the repo as structured JSON, so no extra PDF is required for the hosted board.</span>
+        </div>
+
+        <div class="stoic-layout">
+            <article class="panel stoic-entry-panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Source Entry</span>
+                        <h3>Today's Stoic Prompt</h3>
+                    </div>
+                    {% if stoic_entry %}
+                    <span class="pill pill-muted">{{ stoic_entry.date }}</span>
+                    {% endif %}
+                </div>
+
+                {% if stoic_entry %}
+                <div class="stoic-entry-copy">
+                    <div class="quote-meta">
+                        <span>{{ stoic_entry.author }}</span>
+                        <span>{{ stoic_entry.source }}</span>
+                    </div>
+                    <h4>{{ stoic_entry.title }}</h4>
+                    <blockquote>{{ stoic_entry.quote }}</blockquote>
+                    <p>{{ stoic_entry.body[:520] }}{% if stoic_entry.body|length > 520 %}...{% endif %}</p>
+                </div>
+                {% else %}
+                <div class="empty-state">No Stoic entry was found for today.</div>
+                {% endif %}
+            </article>
+
+            <article class="panel stoic-workbench" id="stoic-workbench" data-stoic-ready="{{ 'true' if stoic_entry else 'false' }}">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Anthropic</span>
+                        <h3>Generate Trading Angle</h3>
+                    </div>
+                </div>
+
+                <div class="stoic-status" id="stoic-status">
+                    {% if stoic_entry %}
+                    Generate today's Stoic trading interpretation, then queue it as a draft or directly approved post.
+                    {% else %}
+                    Add or fix the Stoic source data before trying to generate content.
+                    {% endif %}
+                </div>
+
+                <div class="stoic-result empty-state" id="stoic-result">
+                    No Stoic angle generated yet.
+                </div>
+
+                <div class="action-row action-wrap">
+                    <button type="button" class="btn btn-primary" id="stoic-generate" {% if not stoic_entry %}disabled{% endif %}>Generate Stoic Angle</button>
+                    <button type="button" class="btn btn-secondary" id="stoic-queue-draft" disabled>Queue Draft</button>
+                    <button type="button" class="btn btn-ghost" id="stoic-queue-approved" disabled>Queue Approved</button>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section class="section-block">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Review</span>
+                <h2>Quotes Ready for Triage</h2>
+            </div>
+            <span class="section-meta">{{ pending_quotes|length }} shown</span>
+        </div>
+
+        <div class="quote-grid">
+            <div class="quote-stack">
+                {% if pending_quotes %}
+                {% for quote in pending_quotes %}
+                <article class="quote-card">
+                    <div class="quote-meta">
+                        <span class="score">{{ "%.1f"|format(quote.quality_score or 0) }}</span>
+                        <span>{{ quote.topic or "General" }}</span>
+                        <span>{{ quote.source or "Unknown source" }}</span>
+                    </div>
+                    <p>"{{ quote.content }}"</p>
+                    <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}" class="stack-form">
+                        <label class="checkline">
+                            <input type="checkbox" name="use_ai" value="true" checked>
+                            <span>Use AI formatting for queued posts</span>
+                        </label>
+                        <div class="action-row">
+                            <button type="submit" name="action" value="approve" class="btn btn-ghost">Approve</button>
+                            <button type="submit" name="action" value="queue" class="btn btn-secondary">Queue Draft</button>
+                            <button type="submit" name="action" value="queue-approved" class="btn btn-primary">Queue Approved</button>
+                        </div>
+                    </form>
+                </article>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">No quotes are waiting for review.</div>
+                {% endif %}
+            </div>
+
+            <aside class="panel slim-panel">
+                <div class="panel-head">
+                    <div>
+                        <span class="eyebrow">Already Approved</span>
+                        <h3>Fast Queue Add</h3>
+                    </div>
+                </div>
+                {% if approved_quotes %}
+                <div class="approved-list">
+                    {% for quote in approved_quotes %}
+                    <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}" class="approved-quote">
+                        <div>
+                            <strong>{{ quote.topic or "General" }}</strong>
+                            <p>{{ quote.content[:120] }}{% if quote.content|length > 120 %}...{% endif %}</p>
+                        </div>
+                        <label class="checkline compact-check">
+                            <input type="checkbox" name="use_ai" value="true" checked>
+                            <span>AI</span>
+                        </label>
+                        <button type="submit" name="action" value="queue" class="btn btn-ghost">Draft</button>
+                        <button type="submit" name="action" value="queue-approved" class="btn btn-secondary">Approved</button>
+                    </form>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">Approve a few quotes and they'll show up here.</div>
+                {% endif %}
+            </aside>
+        </div>
+    </section>
+
+    <section class="section-block">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Publishing</span>
+                <h2>Queue Board</h2>
+            </div>
+            <span class="section-meta">X posting marks a queue item as published. Facebook and Instagram are side-post actions.</span>
+        </div>
+
+        <div class="board">
+            <section class="board-column">
+                <div class="board-head">
+                    <h3>Draft Queue</h3>
+                    <span>{{ pending_posts|length }}</span>
+                </div>
+                {% if pending_posts %}
+                {% for post in pending_posts %}
+                <details class="post-card status-pending">
+                    <summary>
+                        <div>
+                            <strong>Post #{{ post.id }}</strong>
+                            <p>{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</p>
+                        </div>
+                        <div class="post-summary-meta">
+                            <span>{{ post.content|length }}/280</span>
+                            <span>{{ post.scheduled_time | datetime_human }}</span>
+                        </div>
+                    </summary>
+                    <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}" class="stack-form post-form">
+                        <label>
+                            <span>Content</span>
+                            <textarea name="content" rows="6">{{ post.content }}</textarea>
+                        </label>
+                        <div class="field-row">
+                            <label>
+                                <span>Schedule</span>
+                                <input type="datetime-local" name="scheduled_time" value="{{ post.scheduled_time | datetime_input }}">
+                            </label>
+                            <label>
+                                <span>Status</span>
+                                <select name="status">
+                                    <option value="pending" {% if post.status == 'pending' %}selected{% endif %}>Draft</option>
+                                    <option value="approved" {% if post.status == 'approved' %}selected{% endif %}>Approved</option>
+                                    <option value="rejected" {% if post.status == 'rejected' %}selected{% endif %}>Rejected</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label>
+                            <span>Image URL</span>
+                            <input type="url" name="media_path" value="{{ post.media_path or '' }}" placeholder="https://...">
+                        </label>
+                        <div class="action-row action-wrap">
+                            <button type="submit" name="action" value="save" class="btn btn-ghost">Save</button>
+                            <button type="submit" name="action" value="approve" class="btn btn-primary">Approve</button>
+                            <button type="submit" name="action" value="publish-facebook" class="btn btn-secondary">Facebook</button>
+                            <button type="submit" name="action" value="publish-instagram" class="btn btn-secondary" {% if not post.media_path %}disabled{% endif %}>Instagram</button>
+                        </div>
+                    </form>
+                </details>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">No draft posts in the queue.</div>
+                {% endif %}
+            </section>
+
+            <section class="board-column">
+                <div class="board-head">
+                    <h3>Approved to Publish</h3>
+                    <span>{{ approved_posts|length }}</span>
+                </div>
+                {% if approved_posts %}
+                {% for post in approved_posts %}
+                <details class="post-card status-approved">
+                    <summary>
+                        <div>
+                            <strong>Post #{{ post.id }}</strong>
+                            <p>{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</p>
+                        </div>
+                        <div class="post-summary-meta">
+                            <span>{{ post.content|length }}/280</span>
+                            <span>{{ post.scheduled_time | datetime_human }}</span>
+                        </div>
+                    </summary>
+                    <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}" class="stack-form post-form">
+                        <label>
+                            <span>Content</span>
+                            <textarea name="content" rows="6">{{ post.content }}</textarea>
+                        </label>
+                        <div class="field-row">
+                            <label>
+                                <span>Schedule</span>
+                                <input type="datetime-local" name="scheduled_time" value="{{ post.scheduled_time | datetime_input }}">
+                            </label>
+                            <label>
+                                <span>Status</span>
+                                <select name="status">
+                                    <option value="approved" {% if post.status == 'approved' %}selected{% endif %}>Approved</option>
+                                    <option value="pending">Draft</option>
+                                    <option value="rejected">Rejected</option>
+                                </select>
+                            </label>
+                        </div>
+                        <label>
+                            <span>Image URL</span>
+                            <input type="url" name="media_path" value="{{ post.media_path or '' }}" placeholder="https://...">
+                        </label>
+                        <div class="action-row action-wrap">
+                            <button type="submit" name="action" value="save" class="btn btn-ghost">Save</button>
+                            <button type="submit" name="action" value="draft" class="btn btn-ghost">Back To Draft</button>
+                            <button type="submit" name="action" value="publish-x" class="btn btn-primary">Publish to X</button>
+                            <button type="submit" name="action" value="publish-facebook" class="btn btn-secondary">Facebook</button>
+                            <button type="submit" name="action" value="publish-instagram" class="btn btn-secondary" {% if not post.media_path %}disabled{% endif %}>Instagram</button>
+                        </div>
+                    </form>
+                </details>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">Nothing approved yet.</div>
+                {% endif %}
+            </section>
+
+            <section class="board-column">
+                <div class="board-head">
+                    <h3>Recently Published</h3>
+                    <span>{{ posted_posts|length }}</span>
+                </div>
+                {% if posted_posts %}
+                {% for post in posted_posts %}
+                <article class="post-card status-posted static-card">
+                    <div class="static-head">
+                        <strong>Post #{{ post.id }}</strong>
+                        <span>{{ post.posted_time | datetime_human }}</span>
+                    </div>
+                    <p>{{ post.content }}</p>
+                    <div class="static-meta">
+                        <span>{{ post.content|length }}/280</span>
+                        {% if post.post_id %}
+                        <a href="https://x.com/{{ profile.handle.lstrip('@') }}/status/{{ post.post_id }}" target="_blank" rel="noreferrer">View on X</a>
+                        {% endif %}
+                    </div>
+                </article>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state">No published posts yet.</div>
+                {% endif %}
+            </section>
+        </div>
+    </section>
+</main>
+{% endblock %}

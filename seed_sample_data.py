@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Seed database with sample ICT quotes from multiple documents for dashboard preview."""
 
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 from core.models import Quote, Post, PostStatus, init_db, get_session
+
+UTC = timezone.utc
 
 SAMPLE_QUOTES = [
     # === Beauty for Ashes (April 14, 2023) ===

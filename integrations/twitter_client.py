@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from typing import Optional
 import json
 
@@ -12,6 +12,8 @@ from rich.console import Console
 from rich.panel import Panel
 
 from core.models import Post, PostStatus, get_session, init_db
+
+UTC = timezone.utc
 
 
 class TwitterClient:

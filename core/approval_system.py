@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from rich.console import Console
@@ -9,6 +9,8 @@ from rich.text import Text
 from rich import box
 
 from .models import Quote, Post, PostStatus, get_session, init_db
+
+UTC = timezone.utc
 
 
 class ApprovalSystem:
@@ -178,7 +180,7 @@ class ApprovalSystem:
             return False
 
         post.status = PostStatus.APPROVED.value
-        post.approved_at = datetime.utcnow()
+        post.approved_at = datetime.now(UTC)
         self.session.commit()
         self.console.print(f"[green]✓ Post #{post_id} approved[/green]")
         return True

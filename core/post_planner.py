@@ -1,13 +1,13 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from collections import defaultdict
 import os
-import json
 import random
-
-from anthropic import Anthropic
+import requests
 
 from .models import Quote, Post, PostStatus, get_session, init_db
+
+UTC = timezone.utc
 
 POST_FORMAT_PROMPT = """You are a social media content creator for EdgeOfICT, a trading edge tracking software.
 
@@ -34,27 +34,16 @@ Respond with just the formatted post text, nothing else."""
 class PostPlanner:
     def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514"):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.client = None
-        if self.api_key:
-            self.client = Anthropic(api_key=self.api_key)
         self.model = model
         init_db()
         self.session = get_session()
 
     def format_quote_for_twitter(self, quote: Quote, use_ai: bool = True) -> str:
-        if use_ai and self.client:
-            response = self.client.messages.create(
-                model=self.model,
-                max_tokens=500,
-                messages=[
-                    {
-                        "role": "user",
-                        "content": f"Format this ICT trading quote for X/Twitter:\n\n\"{quote.content}\"\n\nTopic: {quote.topic}"
-                    }
-                ],
-                system=POST_FORMAT_PROMPT
-            )
-            return response.content[0].text.strip()
+        if use_ai and self.api_key:
+            try:
+                return self._format_quote_with_api(quote)
+            except Exception:
+                pass
 
         hashtags = self._get_hashtags_for_topic(quote.topic)
         template = f'"{quote.content}"\n\nTrack your edge.\n\n{hashtags}'
@@ -65,6 +54,40 @@ class PostPlanner:
             template = f'"{truncated}"\n\nTrack your edge.\n\n{hashtags}'
 
         return template
+
+    def _format_quote_with_api(self, quote: Quote) -> str:
+        response = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={
+                "x-api-key": self.api_key,
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": self.model,
+                "max_tokens": 500,
+                "system": POST_FORMAT_PROMPT,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": f'Format this ICT trading quote for X/Twitter:\n\n"{quote.content}"\n\nTopic: {quote.topic}',
+                    }
+                ],
+            },
+            timeout=60,
+        )
+
+        if response.status_code != 200:
+            raise ValueError(f"Anthropic API error: {response.status_code} - {response.text}")
+
+        payload = response.json()
+        content_blocks = payload.get("content", [])
+        text = "".join(block.get("text", "") for block in content_blocks if block.get("type") == "text").strip()
+
+        if not text:
+            raise ValueError("Anthropic returned an empty response")
+
+        return text
 
     def _get_hashtags_for_topic(self, topic: str) -> str:
         topic_tags = {
@@ -149,7 +172,7 @@ class PostPlanner:
             content=content,
             scheduled_time=scheduled_time,
             status=PostStatus.PENDING.value,
-            created_at=datetime.utcnow()
+            created_at=datetime.now(UTC)
         )
 
         self.session.add(post)
@@ -167,8 +190,8 @@ class PostPlanner:
         shuffle_sources: bool = True
     ) -> list[Post]:
         if start_time is None:
-            start_time = datetime.utcnow().replace(hour=9, minute=0, second=0, microsecond=0)
-            if start_time < datetime.utcnow():
+            start_time = datetime.now(UTC).replace(hour=9, minute=0, second=0, microsecond=0)
+            if start_time < datetime.now(UTC):
                 start_time += timedelta(days=1)
 
         total_posts_needed = days * posts_per_day
@@ -204,7 +227,7 @@ class PostPlanner:
                 )
 
                 quote.used_count += 1
-                quote.last_used = datetime.utcnow()
+                quote.last_used = datetime.now(UTC)
                 self.session.commit()
 
                 posts.append(post)
@@ -217,7 +240,7 @@ class PostPlanner:
         return posts
 
     def get_schedule(self, days: int = 7) -> list[Post]:
-        end_date = datetime.utcnow() + timedelta(days=days)
+        end_date = datetime.now(UTC) + timedelta(days=days)
         return self.session.query(Post).filter(
             Post.scheduled_time <= end_date,
             Post.status.in_([PostStatus.PENDING.value, PostStatus.APPROVED.value])

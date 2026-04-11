@@ -2,7 +2,7 @@ import os
 import json
 import requests
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from .document_parser import parse_document, get_document_name
 from .models import Quote, get_session, init_db
@@ -51,12 +51,12 @@ Only respond with valid JSON, no other text."""
 
 
 class ContentExtractor:
-    def __init__(self, api_key: Optional[str] = None, model: str = "llama-3.3-70b-versatile"):
-        self.api_key = api_key or os.getenv("GROQ_API_KEY")
+    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514"):
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
-            raise ValueError("GROQ_API_KEY not set")
+            raise ValueError("ANTHROPIC_API_KEY not set")
         self.model = model
-        self.api_url = "https://api.groq.com/openai/v1/chat/completions"
+        self.api_url = "https://api.anthropic.com/v1/messages"
 
     def extract_quotes_from_text(self, text: str, source_name: str) -> list[dict]:
         text_preview = text[:12000] if len(text) > 12000 else text
@@ -64,34 +64,44 @@ class ContentExtractor:
         response = requests.post(
             self.api_url,
             headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
+                "x-api-key": f"{self.api_key}",
+                "anthropic-version": "2023-06-01",
+                "Content-Type": "application/json",
             },
             json={
                 "model": self.model,
+                "system": EXTRACTION_PROMPT,
                 "messages": [
-                    {"role": "system", "content": EXTRACTION_PROMPT},
-                    {"role": "user", "content": f"Extract trading quotes from this ICT content. Source: {source_name}\n\n{text_preview}"}
+                    {
+                        "role": "user",
+                        "content": f"Extract trading quotes from this ICT content. Source: {source_name}\n\n{text_preview}",
+                    }
                 ],
                 "max_tokens": 4096,
-                "temperature": 0.3
+                "temperature": 0.3,
             },
-            timeout=120
+            timeout=120,
         )
 
         if response.status_code != 200:
-            raise Exception(f"Groq API error: {response.status_code} - {response.text}")
+            raise Exception(f"Anthropic API error: {response.status_code} - {response.text}")
 
-        response_text = response.json()["choices"][0]["message"]["content"]
+        payload = response.json()
+        response_text = "".join(
+            block.get("text", "")
+            for block in payload.get("content", [])
+            if block.get("type") == "text"
+        ).strip()
 
         try:
             data = json.loads(response_text)
             quotes = data.get("quotes", [])
         except json.JSONDecodeError:
-            start = response_text.find('[')
-            end = response_text.rfind(']') + 1
+            start = response_text.find("{")
+            end = response_text.rfind("}") + 1
             if start != -1 and end > start:
-                quotes = json.loads(response_text[start:end])
+                data = json.loads(response_text[start:end])
+                quotes = data.get("quotes", [])
             else:
                 quotes = []
 
@@ -125,7 +135,7 @@ class ContentExtractor:
                 topic=quote_data.get("topic", "General"),
                 quality_score=quote_data.get("quality_score", 5.0),
                 approved=False,
-                created_at=datetime.utcnow()
+                created_at=datetime.now(timezone.utc)
             )
             session.add(quote)
             saved_count += 1

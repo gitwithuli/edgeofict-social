@@ -1,0 +1,693 @@
+#!/usr/bin/env python3
+"""Hosted control panel for the EdgeOfICT social agent."""
+
+from __future__ import annotations
+
+import os
+import secrets
+import tempfile
+from contextlib import contextmanager
+from datetime import datetime, timezone
+from functools import wraps
+from urllib.parse import urlsplit
+
+from dotenv import load_dotenv
+from flask import (
+    Flask,
+    abort,
+    current_app,
+    flash,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    session,
+    url_for,
+)
+from sqlalchemy import func, text
+from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.security import check_password_hash
+
+from core.content_extractor import ContentExtractor
+from core.models import Post, PostStatus, Quote, get_engine, get_session, init_db, resolve_db_url
+from core.post_planner import PostPlanner
+from core import stoic_service
+from integrations.cloudinary_client import CloudinaryClient
+from integrations.facebook_client import FacebookClient
+from integrations.instagram_client import InstagramClient
+from integrations.twitter_client import TwitterClient
+
+load_dotenv()
+
+UTC = timezone.utc
+
+PROFILE_CONFIG = {
+    "picture_url": os.getenv(
+        "PROFILE_PICTURE_URL",
+        "https://images.unsplash.com/photo-1520607162513-77705c0f0d4a?auto=format&fit=crop&w=320&q=80",
+    ),
+    "name": os.getenv("PROFILE_NAME", "EdgeOfICT"),
+    "handle": os.getenv("PROFILE_HANDLE", "@edgeofict"),
+}
+
+
+def parse_bool(value: str | bool | None, default: bool = False) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def parse_datetime_local(value: str | None):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def is_safe_redirect_target(target: str | None) -> bool:
+    if not target:
+        return False
+    parts = urlsplit(target)
+    return not parts.netloc and parts.path.startswith("/")
+
+
+def build_integration_hints():
+    return {
+        "anthropic": {
+            "label": "Anthropic",
+            "configured": bool(os.getenv("ANTHROPIC_API_KEY")),
+            "detail": "Used for quote extraction and AI post formatting.",
+        },
+        "twitter": {
+            "label": "X / Twitter",
+            "configured": TwitterClient(dry_run=True).is_configured(),
+            "detail": "Publishes approved posts directly to X.",
+        },
+        "facebook": {
+            "label": "Facebook",
+            "configured": FacebookClient().is_configured(),
+            "detail": "Publishes text or image posts to the connected Page.",
+        },
+        "instagram": {
+            "label": "Instagram",
+            "configured": InstagramClient().is_configured(),
+            "detail": "Publishes image posts via the linked Instagram Business account.",
+        },
+        "cloudinary": {
+            "label": "Cloudinary",
+            "configured": CloudinaryClient().is_configured(),
+            "detail": "Stores generated media and hosted images for social posting.",
+        },
+    }
+
+
+def verify_service(name, verify_callable, configured):
+    if not configured:
+        return {
+            "name": name,
+            "configured": False,
+            "state": "missing",
+            "message": "Credentials are not configured.",
+        }
+
+    try:
+        payload = verify_callable() or {}
+        state = "ok"
+        message = "Connection verified."
+
+        if payload.get("status") == "error" or payload.get("configured") is False:
+            state = "error"
+            message = payload.get("error") or payload.get("message") or "Verification failed."
+        else:
+            message = (
+                payload.get("name")
+                or payload.get("username")
+                or payload.get("page_name")
+                or payload.get("cloud_name")
+                or payload.get("message")
+                or "Connection verified."
+            )
+
+        return {
+            "name": name,
+            "configured": True,
+            "state": state,
+            "message": message,
+        }
+    except Exception as exc:
+        return {
+            "name": name,
+            "configured": True,
+            "state": "error",
+            "message": str(exc),
+        }
+
+
+def create_app(test_config=None):
+    app = Flask(__name__)
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    app.config.update(
+        SECRET_KEY=os.getenv("FLASK_SECRET_KEY", secrets.token_hex(32)),
+        ADMIN_USERNAME=os.getenv("ADMIN_USERNAME", "admin"),
+        ADMIN_PASSWORD=os.getenv("ADMIN_PASSWORD"),
+        ADMIN_PASSWORD_HASH=os.getenv("ADMIN_PASSWORD_HASH"),
+        DATABASE_URL=resolve_db_url(os.getenv("DATABASE_URL")),
+        DISABLE_AUTH=parse_bool(os.getenv("DISABLE_AUTH"), default=False),
+        SESSION_COOKIE_SECURE=parse_bool(os.getenv("SESSION_COOKIE_SECURE"), default=os.getenv("FLASK_ENV") == "production"),
+        SESSION_COOKIE_HTTPONLY=True,
+        SESSION_COOKIE_SAMESITE="Lax",
+        MAX_CONTENT_LENGTH=50 * 1024 * 1024,
+        APP_TITLE="EdgeOfICT Social Control",
+    )
+
+    if test_config:
+        app.config.update(test_config)
+
+    if app.config.get("DATABASE_URL"):
+        os.environ["DATABASE_URL"] = app.config["DATABASE_URL"]
+
+    app.config["PROFILE"] = PROFILE_CONFIG
+    app.config["INTEGRATION_HINTS"] = build_integration_hints()
+    app.config["DB_ENGINE"] = get_engine(app.config["DATABASE_URL"])
+    init_db(app.config["DB_ENGINE"])
+
+    @contextmanager
+    def db_session_scope():
+        db_session = get_session(app.config["DB_ENGINE"])
+        try:
+            yield db_session
+            db_session.commit()
+        except Exception:
+            db_session.rollback()
+            raise
+        finally:
+            db_session.close()
+
+    def auth_ready():
+        if current_app.config["DISABLE_AUTH"]:
+            return True
+        return bool(current_app.config.get("ADMIN_PASSWORD") or current_app.config.get("ADMIN_PASSWORD_HASH"))
+
+    def verify_login(username: str, password: str) -> bool:
+        expected_username = current_app.config["ADMIN_USERNAME"]
+        password_hash = current_app.config.get("ADMIN_PASSWORD_HASH")
+        raw_password = current_app.config.get("ADMIN_PASSWORD")
+
+        username_ok = secrets.compare_digest(username or "", expected_username or "")
+
+        if password_hash:
+            password_ok = check_password_hash(password_hash, password or "")
+        elif raw_password:
+            password_ok = secrets.compare_digest(password or "", raw_password)
+        else:
+            password_ok = False
+
+        return username_ok and password_ok
+
+    def login_required(view_func):
+        @wraps(view_func)
+        def wrapper(*args, **kwargs):
+            if not auth_ready():
+                abort(503, description="Admin credentials are missing. Set ADMIN_PASSWORD or ADMIN_PASSWORD_HASH.")
+            if current_app.config["DISABLE_AUTH"] or session.get("admin_authenticated"):
+                return view_func(*args, **kwargs)
+            next_target = request.full_path if request.query_string else request.path
+            return redirect(url_for("login", next=next_target))
+
+        return wrapper
+
+    def update_post_status(post: Post, new_status: str):
+        now = datetime.now(UTC)
+        post.status = new_status
+        if new_status == PostStatus.APPROVED.value:
+            post.approved_at = post.approved_at or now
+            post.posted_time = None
+        elif new_status == PostStatus.POSTED.value:
+            post.approved_at = post.approved_at or now
+            post.posted_time = now
+        elif new_status in {PostStatus.PENDING.value, PostStatus.REJECTED.value, PostStatus.FAILED.value}:
+            post.posted_time = None
+
+    def create_post_from_quote(db_session, quote: Quote, use_ai: bool, status: str = PostStatus.PENDING.value):
+        planner = PostPlanner()
+        content = planner.format_quote_for_twitter(quote, use_ai=use_ai)
+        post = Post(
+            quote_id=quote.id,
+            platform="twitter",
+            content=content,
+            status=status,
+            created_at=datetime.now(UTC),
+        )
+        if status == PostStatus.APPROVED.value:
+            post.approved_at = datetime.now(UTC)
+        db_session.add(post)
+        quote.approved = True
+        quote.used_count = (quote.used_count or 0) + 1
+        quote.last_used = datetime.now(UTC)
+        return post
+
+    def get_dashboard_stoic_entry():
+        try:
+            return stoic_service.get_stoic_entry_for_today()
+        except Exception:
+            return None
+
+    def collect_dashboard_state():
+        with db_session_scope() as db_session:
+            pending_quotes = (
+                db_session.query(Quote)
+                .filter(Quote.approved.is_(False))
+                .order_by(Quote.quality_score.desc(), Quote.created_at.desc())
+                .limit(14)
+                .all()
+            )
+            approved_quotes = (
+                db_session.query(Quote)
+                .filter(Quote.approved.is_(True))
+                .order_by(Quote.quality_score.desc(), Quote.created_at.desc())
+                .limit(10)
+                .all()
+            )
+            pending_posts = (
+                db_session.query(Post)
+                .filter(Post.status == PostStatus.PENDING.value)
+                .order_by(Post.scheduled_time.is_(None), Post.scheduled_time.asc(), Post.created_at.desc())
+                .limit(18)
+                .all()
+            )
+            approved_posts = (
+                db_session.query(Post)
+                .filter(Post.status == PostStatus.APPROVED.value)
+                .order_by(Post.scheduled_time.is_(None), Post.scheduled_time.asc(), Post.created_at.desc())
+                .limit(18)
+                .all()
+            )
+            posted_posts = (
+                db_session.query(Post)
+                .filter(Post.status == PostStatus.POSTED.value)
+                .order_by(Post.posted_time.desc(), Post.created_at.desc())
+                .limit(12)
+                .all()
+            )
+            documents = (
+                db_session.query(Quote.source, func.count(Quote.id).label("quote_count"))
+                .group_by(Quote.source)
+                .order_by(func.count(Quote.id).desc(), Quote.source.asc())
+                .limit(8)
+                .all()
+            )
+            stats = {
+                "quotes_total": db_session.query(Quote).count(),
+                "quotes_pending": db_session.query(Quote).filter(Quote.approved.is_(False)).count(),
+                "quotes_approved": db_session.query(Quote).filter(Quote.approved.is_(True)).count(),
+                "posts_pending": db_session.query(Post).filter(Post.status == PostStatus.PENDING.value).count(),
+                "posts_approved": db_session.query(Post).filter(Post.status == PostStatus.APPROVED.value).count(),
+                "posts_posted": db_session.query(Post).filter(Post.status == PostStatus.POSTED.value).count(),
+            }
+            next_scheduled = (
+                db_session.query(Post)
+                .filter(Post.status.in_([PostStatus.PENDING.value, PostStatus.APPROVED.value]), Post.scheduled_time.isnot(None))
+                .order_by(Post.scheduled_time.asc())
+                .first()
+            )
+
+        db_url = app.config["DATABASE_URL"]
+        stoic_entry = get_dashboard_stoic_entry()
+        return {
+            "pending_quotes": pending_quotes,
+            "approved_quotes": approved_quotes,
+            "pending_posts": pending_posts,
+            "approved_posts": approved_posts,
+            "posted_posts": posted_posts,
+            "documents": documents,
+            "stats": stats,
+            "profile": app.config["PROFILE"],
+            "integration_hints": app.config["INTEGRATION_HINTS"],
+            "next_scheduled": next_scheduled,
+            "database_label": "PostgreSQL" if db_url.startswith("postgresql://") else "SQLite",
+            "auth_enabled": not app.config["DISABLE_AUTH"],
+            "stoic_entry": stoic_entry,
+        }
+
+    @app.template_filter("datetime_input")
+    def datetime_input(value):
+        if not value:
+            return ""
+        if value.tzinfo:
+            value = value.astimezone().replace(tzinfo=None)
+        return value.strftime("%Y-%m-%dT%H:%M")
+
+    @app.template_filter("datetime_human")
+    def datetime_human(value):
+        if not value:
+            return "Not scheduled"
+        if value.tzinfo:
+            value = value.astimezone().replace(tzinfo=None)
+        return value.strftime("%b %d, %Y %H:%M")
+
+    @app.errorhandler(503)
+    def handle_service_config(error):
+        return (
+            render_template(
+                "login.html",
+                profile=app.config["PROFILE"],
+                config_error=str(error.description),
+            ),
+            503,
+        )
+
+    @app.get("/healthz")
+    def healthz():
+        try:
+            with db_session_scope() as db_session:
+                db_session.execute(text("SELECT 1"))
+            return jsonify(
+                {
+                    "status": "ok",
+                    "database": "postgresql" if app.config["DATABASE_URL"].startswith("postgresql://") else "sqlite",
+                    "auth_enabled": not app.config["DISABLE_AUTH"],
+                }
+            )
+        except Exception as exc:
+            return jsonify({"status": "error", "error": str(exc)}), 500
+
+    @app.route("/login", methods=["GET", "POST"])
+    def login():
+        if app.config["DISABLE_AUTH"]:
+            session["admin_authenticated"] = True
+            return redirect(url_for("dashboard"))
+
+        if session.get("admin_authenticated"):
+            return redirect(url_for("dashboard"))
+
+        config_error = None if auth_ready() else "Set ADMIN_PASSWORD or ADMIN_PASSWORD_HASH before exposing this dashboard."
+
+        if request.method == "POST":
+            if not auth_ready():
+                return (
+                    render_template("login.html", profile=app.config["PROFILE"], config_error=config_error),
+                    503,
+                )
+
+            username = request.form.get("username", "")
+            password = request.form.get("password", "")
+
+            if verify_login(username, password):
+                session["admin_authenticated"] = True
+                session.permanent = True
+                next_target = request.args.get("next")
+                if is_safe_redirect_target(next_target):
+                    return redirect(next_target)
+                return redirect(url_for("dashboard"))
+
+            flash("Invalid username or password.", "error")
+
+        return render_template(
+            "login.html",
+            profile=app.config["PROFILE"],
+            config_error=config_error,
+        )
+
+    @app.post("/logout")
+    def logout():
+        session.clear()
+        return redirect(url_for("login"))
+
+    @app.get("/")
+    @login_required
+    def dashboard():
+        return render_template("dashboard.html", **collect_dashboard_state())
+
+    @app.post("/actions/extract-quotes")
+    @login_required
+    def extract_quotes():
+        upload = request.files.get("document")
+        if not upload or not upload.filename:
+            flash("Choose a PDF, DOCX, or TXT file to extract quotes from.", "error")
+            return redirect(url_for("dashboard"))
+
+        ext = upload.filename.rsplit(".", 1)[-1].lower()
+        if ext not in {"pdf", "docx", "txt"}:
+            flash("Unsupported file type. Use PDF, DOCX, or TXT.", "error")
+            return redirect(url_for("dashboard"))
+
+        temp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as temp_file:
+                upload.save(temp_file.name)
+                temp_path = temp_file.name
+
+            extractor = ContentExtractor()
+            extracted, saved = extractor.extract_and_save(temp_path)
+            flash(f"Imported {saved} new quotes from {upload.filename} ({extracted} extracted).", "success")
+        except ValueError as exc:
+            flash(str(exc), "error")
+        except Exception as exc:
+            flash(f"Quote extraction failed: {exc}", "error")
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+        return redirect(url_for("dashboard"))
+
+    @app.post("/actions/generate-posts")
+    @login_required
+    def generate_posts():
+        days = max(1, min(int(request.form.get("days", 7)), 30))
+        posts_per_day = max(1, min(int(request.form.get("posts_per_day", 1)), 6))
+        use_ai = parse_bool(request.form.get("use_ai"), default=False)
+
+        try:
+            planner = PostPlanner()
+            posts = planner.generate_posts(days=days, posts_per_day=posts_per_day, use_ai=use_ai)
+            if posts:
+                flash(f"Generated {len(posts)} queued posts.", "success")
+            else:
+                flash("No approved quotes were available to generate posts from.", "warning")
+        except Exception as exc:
+            flash(f"Post generation failed: {exc}", "error")
+
+        return redirect(url_for("dashboard"))
+
+    @app.post("/actions/quotes/<int:quote_id>")
+    @login_required
+    def handle_quote_action(quote_id: int):
+        action = request.form.get("action")
+        use_ai = parse_bool(request.form.get("use_ai"), default=False)
+
+        try:
+            with db_session_scope() as db_session:
+                quote = db_session.query(Quote).filter(Quote.id == quote_id).first()
+                if not quote:
+                    flash("Quote not found.", "error")
+                    return redirect(url_for("dashboard"))
+
+                if action == "approve":
+                    quote.approved = True
+                    flash(f"Approved quote #{quote.id}.", "success")
+                elif action == "reject":
+                    quote.approved = False
+                    flash(f"Moved quote #{quote.id} back to review.", "warning")
+                elif action == "queue":
+                    post = create_post_from_quote(db_session, quote, use_ai=use_ai)
+                    flash(f"Queued draft post #{post.id} from quote #{quote.id}.", "success")
+                elif action == "queue-approved":
+                    post = create_post_from_quote(db_session, quote, use_ai=use_ai, status=PostStatus.APPROVED.value)
+                    flash(f"Queued approved post #{post.id} from quote #{quote.id}.", "success")
+                else:
+                    flash("Unknown quote action.", "error")
+        except Exception as exc:
+            flash(f"Quote action failed: {exc}", "error")
+
+        return redirect(url_for("dashboard"))
+
+    @app.post("/actions/posts/<int:post_id>")
+    @login_required
+    def handle_post_action(post_id: int):
+        action = request.form.get("action")
+        new_status = request.form.get("status", PostStatus.PENDING.value)
+
+        try:
+            with db_session_scope() as db_session:
+                post = db_session.query(Post).filter(Post.id == post_id).first()
+                if not post:
+                    flash("Post not found.", "error")
+                    return redirect(url_for("dashboard"))
+
+                content = request.form.get("content", "").strip()
+                if content:
+                    post.content = content
+                media_path = request.form.get("media_path", "").strip()
+                post.media_path = media_path or None
+                post.scheduled_time = parse_datetime_local(request.form.get("scheduled_time"))
+
+                if action == "save":
+                    update_post_status(post, new_status)
+                    flash(f"Saved post #{post.id}.", "success")
+                elif action == "approve":
+                    update_post_status(post, PostStatus.APPROVED.value)
+                    flash(f"Approved post #{post.id}.", "success")
+                elif action == "draft":
+                    update_post_status(post, PostStatus.PENDING.value)
+                    flash(f"Moved post #{post.id} back to draft.", "warning")
+                elif action == "reject":
+                    update_post_status(post, PostStatus.REJECTED.value)
+                    flash(f"Rejected post #{post.id}.", "warning")
+                elif action == "publish-x":
+                    if post.status != PostStatus.APPROVED.value:
+                        flash("Approve the post before publishing to X.", "error")
+                        return redirect(url_for("dashboard"))
+                    client = TwitterClient(dry_run=False)
+                    if not client.is_configured():
+                        flash("X/Twitter credentials are not configured.", "error")
+                        return redirect(url_for("dashboard"))
+                    result = client.client.create_tweet(text=post.content)
+                    update_post_status(post, PostStatus.POSTED.value)
+                    post.post_id = str(result.data["id"])
+                    flash(f"Published post #{post.id} to X.", "success")
+                elif action == "publish-facebook":
+                    client = FacebookClient()
+                    if not client.is_configured():
+                        flash("Facebook credentials are not configured.", "error")
+                        return redirect(url_for("dashboard"))
+                    result = client.post_image(post.media_path, post.content) if post.media_path else client.post_text(post.content)
+                    flash(f"Posted to Facebook: {result.get('url')}", "success")
+                elif action == "publish-instagram":
+                    if not post.media_path:
+                        flash("Instagram publishing requires an image URL in the media field.", "error")
+                        return redirect(url_for("dashboard"))
+                    client = InstagramClient()
+                    if not client.is_configured():
+                        flash("Instagram credentials are not configured.", "error")
+                        return redirect(url_for("dashboard"))
+                    result = client.post_image(post.media_path, post.content)
+                    flash(f"Posted to Instagram: {result.get('url')}", "success")
+                else:
+                    flash("Unknown post action.", "error")
+        except Exception as exc:
+            flash(f"Post action failed: {exc}", "error")
+
+        return redirect(url_for("dashboard"))
+
+    @app.get("/api/integrations")
+    @login_required
+    def integration_status():
+        hints = app.config["INTEGRATION_HINTS"]
+        statuses = {
+            "twitter": verify_service(
+                "X / Twitter",
+                lambda: TwitterClient(dry_run=False).verify_credentials(),
+                hints["twitter"]["configured"],
+            ),
+            "facebook": verify_service(
+                "Facebook",
+                lambda: FacebookClient().verify_credentials(),
+                hints["facebook"]["configured"],
+            ),
+            "instagram": verify_service(
+                "Instagram",
+                lambda: InstagramClient().verify_credentials(),
+                hints["instagram"]["configured"],
+            ),
+            "cloudinary": verify_service(
+                "Cloudinary",
+                lambda: CloudinaryClient().verify_credentials(),
+                hints["cloudinary"]["configured"],
+            ),
+        }
+        statuses["anthropic"] = {
+            "name": "Anthropic",
+            "configured": hints["anthropic"]["configured"],
+            "state": "ok" if hints["anthropic"]["configured"] else "missing",
+            "message": "API key loaded for extraction and formatting." if hints["anthropic"]["configured"] else "ANTHROPIC_API_KEY is missing.",
+        }
+        return jsonify(statuses)
+
+    @app.get("/api/stoic/entry")
+    @login_required
+    def get_stoic_entry():
+        entry = stoic_service.get_stoic_entry_for_today()
+        if not entry:
+            return jsonify({"error": "No Stoic entry found for today."}), 404
+
+        return jsonify(
+            {
+                "date": entry.get("date", ""),
+                "title": entry.get("title", ""),
+                "author": entry.get("author", ""),
+                "source": entry.get("source", ""),
+                "quote": entry.get("quote", ""),
+                "body": entry.get("body", ""),
+            }
+        )
+
+    @app.post("/api/stoic/generate")
+    @login_required
+    def generate_stoic():
+        try:
+            entry = stoic_service.get_stoic_entry_for_today()
+            if not entry:
+                return jsonify({"error": "No Stoic entry found for today."}), 404
+
+            content = stoic_service.generate_stoic_trading_content(entry)
+            return jsonify(
+                {
+                    "success": True,
+                    "date": entry.get("date", ""),
+                    "title": entry.get("title", ""),
+                    "author": entry.get("author", ""),
+                    "source": entry.get("source", ""),
+                    "quote": entry.get("quote", ""),
+                    **content,
+                }
+            )
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 500
+        except Exception as exc:
+            return jsonify({"error": f"Stoic generation failed: {exc}"}), 500
+
+    @app.post("/api/stoic/queue")
+    @login_required
+    def queue_stoic():
+        payload = request.get_json(silent=True) or {}
+        tweet = (payload.get("tweet") or "").strip()
+        status = payload.get("status", PostStatus.PENDING.value)
+
+        if not tweet:
+            return jsonify({"error": "Missing Stoic tweet text."}), 400
+
+        if status not in {PostStatus.PENDING.value, PostStatus.APPROVED.value}:
+            return jsonify({"error": "Invalid queue status."}), 400
+
+        try:
+            with db_session_scope() as db_session:
+                post = Post(
+                    platform="twitter",
+                    content=tweet,
+                    media_path=payload.get("image_url") or None,
+                    status=status,
+                    created_at=datetime.now(UTC),
+                )
+                if status == PostStatus.APPROVED.value:
+                    post.approved_at = datetime.now(UTC)
+                db_session.add(post)
+                db_session.flush()
+                post_id = post.id
+
+            return jsonify({"success": True, "post_id": post_id, "status": status})
+        except Exception as exc:
+            return jsonify({"error": f"Queue failed: {exc}"}), 500
+
+    return app
+
+
+app = create_app()
+
+
+if __name__ == "__main__":
+    app.run(debug=True, port=int(os.getenv("PORT", "5001")))

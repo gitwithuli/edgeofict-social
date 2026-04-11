@@ -1,0 +1,173 @@
+import os
+import tempfile
+
+import pytest
+
+from app import create_app
+from core.models import Base, Post, Quote, get_session
+from core import stoic_service
+
+
+@pytest.fixture
+def app_client():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as handle:
+        db_path = handle.name
+
+    database_url = f"sqlite:///{db_path}"
+    app = create_app(
+        {
+            "TESTING": True,
+            "SECRET_KEY": "test-secret",
+            "DATABASE_URL": database_url,
+            "ADMIN_USERNAME": "admin",
+            "ADMIN_PASSWORD": "secret",
+            "DISABLE_AUTH": False,
+            "SESSION_COOKIE_SECURE": False,
+        }
+    )
+
+    Base.metadata.create_all(app.config["DB_ENGINE"])
+    session = get_session(app.config["DB_ENGINE"])
+    session.add(
+        Quote(
+            content="Follow your model and respect your risk.",
+            source="test-doc",
+            topic="Discipline",
+            quality_score=9.1,
+            approved=False,
+        )
+    )
+    session.commit()
+    session.close()
+
+    try:
+        yield app.test_client(), app
+    finally:
+        os.unlink(db_path)
+
+
+def test_healthz(app_client):
+    client, _ = app_client
+    response = client.get("/healthz")
+
+    assert response.status_code == 200
+    assert response.get_json()["status"] == "ok"
+
+
+def test_dashboard_requires_login(app_client):
+    client, _ = app_client
+    response = client.get("/")
+
+    assert response.status_code == 302
+    assert "/login" in response.headers["Location"]
+
+
+def test_login_and_quote_approval(app_client):
+    client, app = app_client
+
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": "secret"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Hosted queue control" in response.data
+
+    response = client.post(
+        "/actions/quotes/1",
+        data={"action": "approve"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Approved quote #1." in response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    quote = session.query(Quote).filter(Quote.id == 1).first()
+    assert quote.approved is True
+    session.close()
+
+
+def test_stoic_entry_endpoint(app_client, monkeypatch):
+    client, _ = app_client
+
+    monkeypatch.setattr(
+        stoic_service,
+        "get_stoic_entry_for_today",
+        lambda: {
+            "date": "April 11",
+            "title": "Control",
+            "author": "Epictetus",
+            "source": "Discourses",
+            "quote": "Focus on what you control.",
+            "body": "Ignore the noise and manage your choices.",
+        },
+    )
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.get("/api/stoic/entry")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["title"] == "Control"
+    assert payload["author"] == "Epictetus"
+
+
+def test_generate_and_queue_stoic_post(app_client, monkeypatch):
+    client, app = app_client
+
+    monkeypatch.setattr(
+        stoic_service,
+        "get_stoic_entry_for_today",
+        lambda: {
+            "date": "April 11",
+            "title": "Control",
+            "author": "Epictetus",
+            "source": "Discourses",
+            "quote": "Focus on what you control.",
+            "body": "Ignore the noise and manage your choices.",
+        },
+    )
+    monkeypatch.setattr(
+        stoic_service,
+        "generate_stoic_trading_content",
+        lambda entry: {
+            "point1_title": "Control Risk",
+            "point1_meaning": "Own decisions",
+            "point1_trading": "Size down fast",
+            "point2_title": "Ignore Noise",
+            "point2_meaning": "External chaos",
+            "point2_trading": "Stick to plan",
+            "point3_title": "Stay Present",
+            "point3_meaning": "Act now",
+            "point3_trading": "Execute cleanly",
+            "closing_wisdom": "Calm process beats reactive trading.",
+            "key_takeaway": "Own the next decision.",
+            "tweet": "Control your choices, not the tape. #ict #trader #tradingpsychology #stoic",
+        },
+    )
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post("/api/stoic/generate")
+
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["success"] is True
+    assert payload["tweet"].startswith("Control your choices")
+
+    queue_response = client.post(
+        "/api/stoic/queue",
+        json={"tweet": payload["tweet"], "status": "approved"},
+    )
+
+    assert queue_response.status_code == 200
+    queue_payload = queue_response.get_json()
+    assert queue_payload["success"] is True
+
+    session = get_session(app.config["DB_ENGINE"])
+    post = session.query(Post).filter(Post.id == queue_payload["post_id"]).first()
+    assert post is not None
+    assert post.status == "approved"
+    assert post.content == payload["tweet"]
+    session.close()

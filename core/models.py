@@ -1,10 +1,12 @@
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text, Enum, Index
+from functools import lru_cache
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text
 from sqlalchemy.orm import declarative_base, sessionmaker
-from datetime import datetime, UTC
-import enum
+from datetime import datetime, timezone
 import os
+import enum
 
 Base = declarative_base()
+UTC = timezone.utc
 
 
 def utc_now():
@@ -75,21 +77,40 @@ class Analytics(Base):
         return f"<Analytics(post_id={self.post_id}, engagement_rate={self.engagement_rate})>"
 
 
-def get_engine(db_url=None):
-    if db_url is None:
-        db_url = os.getenv('DATABASE_URL')
+def resolve_db_url(db_url=None):
+    """Resolve the database URL, normalizing hosted provider formats."""
+    if db_url:
+        return db_url.replace("postgres://", "postgresql://", 1)
 
-        if not db_url:
-            db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'quotes.db')
-            os.makedirs(os.path.dirname(db_path), exist_ok=True)
-            db_url = f"sqlite:///{db_path}"
-    return create_engine(db_url)
+    env_url = os.getenv('DATABASE_URL')
+    if env_url:
+        return env_url.replace("postgres://", "postgresql://", 1)
+
+    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'quotes.db')
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    return f"sqlite:///{db_path}"
+
+
+@lru_cache(maxsize=8)
+def _build_engine(db_url: str):
+    engine_kwargs = {
+        "pool_pre_ping": True,
+    }
+
+    if db_url.startswith("sqlite"):
+        engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+    return create_engine(db_url, **engine_kwargs)
+
+
+def get_engine(db_url=None):
+    return _build_engine(resolve_db_url(db_url))
 
 
 def get_session(engine=None):
     if engine is None:
         engine = get_engine()
-    Session = sessionmaker(bind=engine)
+    Session = sessionmaker(bind=engine, expire_on_commit=False)
     return Session()
 
 

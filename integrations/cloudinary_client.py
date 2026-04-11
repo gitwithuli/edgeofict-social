@@ -3,10 +3,11 @@ import os
 import hashlib
 import time
 import logging
-from datetime import datetime, timedelta, UTC
+from datetime import datetime, timedelta, timezone
 import requests
 
 logger = logging.getLogger(__name__)
+UTC = timezone.utc
 
 # Request timeout in seconds
 REQUEST_TIMEOUT = 30

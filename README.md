@@ -1,6 +1,6 @@
 # EdgeOfICT Social Media Automation
 
-Social media automation system for EdgeOfICT trading edge tracking software.
+Social media automation system for EdgeOfICT trading edge tracking software, now with a hosted Flask control panel for quote intake, queue management, approval, and publishing.
 
 ## Setup
 
@@ -9,11 +9,31 @@ Social media automation system for EdgeOfICT trading edge tracking software.
 cp .env.example .env
 
 # Add your Anthropic API key to .env
+# Used for quote extraction and AI post formatting
 # ANTHROPIC_API_KEY=sk-ant-...
 
 # Activate virtual environment
 source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
 ```
+
+## Control Panel
+
+The new web control panel is served by `app.py`.
+
+```bash
+# Start the hosted-style dashboard locally
+python app.py
+```
+
+Open `http://localhost:5001` and sign in with:
+
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD` or `ADMIN_PASSWORD_HASH`
+
+For local-only testing you can set `DISABLE_AUTH=true`, but do not use that in production.
 
 ## Quick Start
 
@@ -42,6 +62,13 @@ python main.py dry-run --all
 python main.py post --next --dry-run  # Test first
 python main.py post --next            # Actually post
 ```
+
+## Hosted Deployment
+
+- `render.yaml` is wired to the new control panel entrypoint: `gunicorn app:app`
+- `Dockerfile` is included for generic platforms like Cloud Run
+- Use external Postgres in production via `DATABASE_URL`; local SQLite is only a fallback for development
+- See `DEPLOYMENT.md` for the free-tier hosting path
 
 ## Commands
 
@@ -94,3 +121,4 @@ python main.py post --next            # Actually post
 - Dry-run mode for testing
 - Confirmation prompts before posting
 - No auto-posting without explicit command
+- Password-protected web dashboard for hosted use

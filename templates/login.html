@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+
+{% block body_class %}login-body{% endblock %}
+
+{% block body %}
+<main class="login-shell">
+    <section class="login-panel">
+        <div class="brand-lockup">
+            <div class="brand-badge">Hosted Control</div>
+            <h1>{{ profile.name }}</h1>
+            <p class="brand-copy">Approve quotes, shape the queue, and publish without babysitting a Mac mini.</p>
+        </div>
+
+        <div class="login-profile">
+            <img src="{{ profile.picture_url }}" alt="{{ profile.name }}" class="profile-photo">
+            <div>
+                <div class="profile-name">{{ profile.name }}</div>
+                <div class="profile-handle">{{ profile.handle }}</div>
+            </div>
+        </div>
+
+        {% if config_error %}
+        <div class="flash flash-error">
+            <strong>Configuration required.</strong>
+            <span>{{ config_error }}</span>
+        </div>
+        {% endif %}
+
+        {% with flashes = get_flashed_messages(with_categories=true) %}
+        {% if flashes %}
+        <div class="flash-stack">
+            {% for category, message in flashes %}
+            <div class="flash flash-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <form method="post" class="auth-form">
+            <label>
+                <span>Username</span>
+                <input type="text" name="username" value="{{ request.form.get('username', config.ADMIN_USERNAME) }}" autocomplete="username" required>
+            </label>
+            <label>
+                <span>Password</span>
+                <input type="password" name="password" autocomplete="current-password" required>
+            </label>
+            <button type="submit" class="btn btn-primary btn-block" {% if config_error %}disabled{% endif %}>Enter Control Panel</button>
+        </form>
+
+        <div class="login-note">
+            <span class="pill">Render / Cloud Run ready</span>
+            <span class="pill pill-muted">Password-protected</span>
+            <span class="pill pill-muted">Stateless web tier</span>
+        </div>
+    </section>
+</main>
+{% endblock %}

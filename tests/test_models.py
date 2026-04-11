@@ -1,9 +1,9 @@
 import pytest
-from datetime import datetime
+from datetime import datetime, timezone
 import tempfile
 import os
 
-from core.models import Quote, Post, Analytics, PostStatus, init_db, get_engine, get_session, Base
+from core.models import Quote, Post, Analytics, PostStatus, get_engine, get_session, resolve_db_url, Base
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ def test_post_status_transitions(db_session):
     db_session.commit()
 
     post.status = PostStatus.APPROVED.value
-    post.approved_at = datetime.utcnow()
+    post.approved_at = datetime.now(timezone.utc)
     db_session.commit()
 
     assert post.status == "approved"
@@ -79,3 +79,7 @@ def test_analytics_creation(db_session):
 
     assert analytics.id is not None
     assert analytics.engagement_rate == 0.0
+
+
+def test_resolve_db_url_normalizes_postgres_scheme():
+    assert resolve_db_url("postgres://user:pass@localhost:5432/db") == "postgresql://user:pass@localhost:5432/db"

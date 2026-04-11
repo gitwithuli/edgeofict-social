@@ -7,10 +7,12 @@ import secrets
 import logging
 from functools import wraps
 from flask import Flask, render_template_string, request, jsonify, session, redirect, url_for
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 load_dotenv()
+
+UTC = timezone.utc
 
 from core.models import Quote, Post, PostStatus, init_db, get_session
 
@@ -3985,8 +3987,8 @@ def extract_quotes_from_upload():
                 os.unlink(tmp_path)
 
     except ValueError as e:
-        if 'GROQ_API_KEY' in str(e):
-            return jsonify({'error': 'API key not configured. Set GROQ_API_KEY environment variable.'}), 500
+        if 'ANTHROPIC_API_KEY' in str(e):
+            return jsonify({'error': 'API key not configured. Set ANTHROPIC_API_KEY environment variable.'}), 500
         return jsonify({'error': str(e)}), 500
     except Exception as e:
         return jsonify({'error': f'Extraction failed: {str(e)}'}), 500
@@ -4578,8 +4580,8 @@ def generate_stoic_card():
         })
 
     except ValueError as e:
-        if 'GROQ_API_KEY' in str(e):
-            return jsonify({'error': 'API key not configured. Set GROQ_API_KEY.'}), 500
+        if 'ANTHROPIC_API_KEY' in str(e):
+            return jsonify({'error': 'API key not configured. Set ANTHROPIC_API_KEY.'}), 500
         return jsonify({'error': str(e)}), 500
     except Exception as e:
         logger.error(f"Stoic card generation failed: {e}")
