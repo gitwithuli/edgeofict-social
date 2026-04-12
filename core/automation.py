@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 from .models import AutomationRun, Post, PostStatus, get_session, init_db
-from . import stoic_service
+from . import brand_media, stoic_service
+from integrations.cloudinary_client import CloudinaryClient
 from integrations.twitter_client import TwitterClient
 
 UTC = timezone.utc
@@ -30,6 +31,25 @@ def should_run_for_hour(run_hour: int | None, now_local: datetime) -> bool:
     if run_hour is None:
         return True
     return now_local.hour == run_hour
+
+
+def build_stoic_image_assets(entry: dict, content: dict) -> tuple[bytes, str | None]:
+    image_bytes = brand_media.render_stoic_card(
+        {
+            "date": entry.get("date", ""),
+            "title": entry.get("title", ""),
+            "author": entry.get("author", ""),
+            **content,
+        }
+    )
+
+    cloudinary = CloudinaryClient()
+    if not cloudinary.is_configured():
+        return image_bytes, None
+
+    public_id = f"stoic-{datetime.now(UTC).date().isoformat()}-{entry.get('title', 'wisdom').lower().replace(' ', '-')[:36]}"
+    result = cloudinary.upload_bytes(image_bytes, folder="edgeofict/stoic", public_id=public_id)
+    return image_bytes, result.get("secure_url") or result.get("url")
 
 
 def run_daily_stoic_publish(
@@ -106,9 +126,17 @@ def run_daily_stoic_publish(
             db_session.commit()
             return AutomationResult(status="failed", message=run.detail)
 
+        image_bytes = None
+        image_url = None
+        try:
+            image_bytes, image_url = build_stoic_image_assets(entry, content)
+        except Exception:
+            image_bytes, image_url = None, None
+
         post = Post(
             platform="twitter",
             content=tweet,
+            media_path=image_url,
             status=PostStatus.APPROVED.value,
             approved_at=datetime.now(UTC),
             created_at=datetime.now(UTC),
@@ -128,7 +156,7 @@ def run_daily_stoic_publish(
             db_session.commit()
             return AutomationResult(status="failed", message=run.detail, post_id=post.id)
 
-        result = client.post_by_id(post.id, confirm=False)
+        result = client.post_by_id(post.id, confirm=False, image_bytes=image_bytes)
         run.updated_at = datetime.now(UTC)
 
         if result.get("status") == "posted":

@@ -1,7 +1,9 @@
 import os
+import tempfile
 from datetime import datetime, timezone
 from typing import Optional
 import json
+import requests
 
 try:
     import tweepy
@@ -14,6 +16,7 @@ from rich.panel import Panel
 from core.models import Post, PostStatus, get_session, init_db
 
 UTC = timezone.utc
+REQUEST_TIMEOUT = 30
 
 
 class TwitterClient:
@@ -87,7 +90,71 @@ class TwitterClient:
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
-    def post_tweet(self, post: Post, confirm: bool = True) -> dict:
+    def _upload_media(self, image_url: Optional[str] = None, image_bytes: Optional[bytes] = None, image_filename: str = "edgeofict.png"):
+        if not self.api:
+            raise ValueError("Twitter upload API is not initialized")
+
+        if not image_url and not image_bytes:
+            return None
+
+        temp_path = None
+        try:
+            if image_bytes is None:
+                response = requests.get(image_url, timeout=REQUEST_TIMEOUT)
+                response.raise_for_status()
+                image_bytes = response.content
+
+            suffix = os.path.splitext(image_filename)[1] or ".png"
+            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as handle:
+                handle.write(image_bytes)
+                temp_path = handle.name
+
+            media = self.api.media_upload(filename=temp_path)
+            return getattr(media, "media_id_string", None) or getattr(media, "media_id", None)
+        finally:
+            if temp_path and os.path.exists(temp_path):
+                os.unlink(temp_path)
+
+    def publish_content(
+        self,
+        text: str,
+        *,
+        image_url: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+        image_filename: str = "edgeofict.png",
+    ) -> dict:
+        if len(text) > 280:
+            return {"status": "error", "message": f"Tweet too long: {len(text)} chars"}
+
+        if self.dry_run:
+            return {
+                "status": "dry_run",
+                "message": "Dry run completed successfully",
+                "content": text,
+                "char_count": len(text),
+                "has_media": bool(image_url or image_bytes),
+            }
+
+        payload = {"text": text}
+        media_id = self._upload_media(image_url=image_url, image_bytes=image_bytes, image_filename=image_filename)
+        if media_id:
+            payload["media_ids"] = [media_id]
+
+        result = self.client.create_tweet(**payload)
+        return {
+            "status": "posted",
+            "tweet_id": result.data["id"],
+            "url": f"https://x.com/edgeofict/status/{result.data['id']}",
+        }
+
+    def post_tweet(
+        self,
+        post: Post,
+        confirm: bool = True,
+        *,
+        image_url: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+    ) -> dict:
         if post.platform != "twitter":
             return {"status": "error", "message": "Post is not for Twitter"}
 
@@ -120,21 +187,26 @@ class TwitterClient:
                 return {"status": "cancelled", "message": "User cancelled"}
 
         try:
-            result = self.client.create_tweet(text=post.content)
+            result = self.publish_content(
+                post.content,
+                image_url=image_url or post.media_path,
+                image_bytes=image_bytes,
+                image_filename=f"edgeofict-{post.id}.png",
+            )
+            if result.get("status") != "posted":
+                post.status = PostStatus.FAILED.value
+                self.session.commit()
+                return result
 
             post.status = PostStatus.POSTED.value
             post.posted_time = datetime.now(UTC)
-            post.post_id = str(result.data['id'])
+            post.post_id = str(result["tweet_id"])
             self.session.commit()
 
             self.console.print(f"[green]✓ Tweet posted successfully![/green]")
-            self.console.print(f"[dim]Tweet ID: {result.data['id']}[/dim]")
+            self.console.print(f"[dim]Tweet ID: {result['tweet_id']}[/dim]")
 
-            return {
-                "status": "posted",
-                "tweet_id": result.data['id'],
-                "url": f"https://x.com/edgeofict/status/{result.data['id']}"
-            }
+            return result
 
         except Exception as e:
             post.status = PostStatus.FAILED.value
@@ -143,7 +215,14 @@ class TwitterClient:
             self.console.print(f"[red]Failed to post tweet: {e}[/red]")
             return {"status": "error", "message": str(e)}
 
-    def post_by_id(self, post_id: int, confirm: bool = True) -> dict:
+    def post_by_id(
+        self,
+        post_id: int,
+        confirm: bool = True,
+        *,
+        image_url: Optional[str] = None,
+        image_bytes: Optional[bytes] = None,
+    ) -> dict:
         post = self.session.query(Post).filter(Post.id == post_id).first()
         if not post:
             return {"status": "error", "message": f"Post #{post_id} not found"}
@@ -154,7 +233,7 @@ class TwitterClient:
         if post.status != PostStatus.APPROVED.value and not self.dry_run:
             return {"status": "error", "message": "Post must be approved before posting"}
 
-        return self.post_tweet(post, confirm=confirm)
+        return self.post_tweet(post, confirm=confirm, image_url=image_url, image_bytes=image_bytes)
 
     def post_next_approved(self, confirm: bool = True) -> dict:
         post = self.session.query(Post).filter(

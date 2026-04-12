@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import re
 import secrets
 import tempfile
 from contextlib import contextmanager
@@ -31,7 +32,7 @@ from werkzeug.security import check_password_hash
 from core.content_extractor import ContentExtractor
 from core.models import Post, PostStatus, Quote, get_engine, get_session, init_db, resolve_db_url
 from core.post_planner import PostPlanner
-from core import stoic_service
+from core import brand_media, stoic_service
 from integrations.cloudinary_client import CloudinaryClient
 from integrations.facebook_client import FacebookClient
 from integrations.instagram_client import InstagramClient
@@ -73,6 +74,11 @@ def is_safe_redirect_target(target: str | None) -> bool:
         return False
     parts = urlsplit(target)
     return not parts.netloc and parts.path.startswith("/")
+
+
+def slug_fragment(value: str, fallback: str = "card") -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
+    return slug[:48] or fallback
 
 
 def build_integration_hints():
@@ -233,6 +239,90 @@ def create_app(test_config=None):
         elif new_status in {PostStatus.PENDING.value, PostStatus.REJECTED.value, PostStatus.FAILED.value}:
             post.posted_time = None
 
+    def upload_generated_image(image_bytes: bytes, *, folder: str, public_id: str) -> str | None:
+        cloudinary = CloudinaryClient()
+        if not cloudinary.is_configured():
+            return None
+
+        try:
+            result = cloudinary.upload_bytes(image_bytes, folder=folder, public_id=public_id)
+            return result.get("secure_url") or result.get("url")
+        except Exception:
+            return None
+
+    def ensure_quote_media(post: Post, quote: Quote | None = None) -> bytes | None:
+        source_text = (quote.content if quote else "") or post.content or ""
+        if not source_text:
+            return None
+
+        image_bytes = brand_media.render_quote_card(source_text)
+        if not post.media_path:
+            public_id = f"quote-{post.id}-{slug_fragment(source_text)}"
+            image_url = upload_generated_image(
+                image_bytes,
+                folder="edgeofict/quotes",
+                public_id=public_id,
+            )
+            if image_url:
+                post.media_path = image_url
+        return image_bytes
+
+    def build_stoic_media(payload: dict) -> dict:
+        image_bytes = brand_media.render_stoic_card(payload)
+        public_id = f"stoic-{slug_fragment(payload.get('date', 'today'))}-{slug_fragment(payload.get('title', 'wisdom'))}"
+        image_url = upload_generated_image(
+            image_bytes,
+            folder="edgeofict/stoic",
+            public_id=public_id,
+        )
+        return {
+            "image_bytes": image_bytes,
+            "image_data_uri": brand_media.png_data_uri(image_bytes),
+            "image_url": image_url,
+        }
+
+    def publish_post_to_x(db_session, post: Post, quote: Quote | None = None) -> dict:
+        client = TwitterClient(dry_run=False)
+        if not client.is_configured():
+            return {"status": "error", "message": "X/Twitter credentials are not configured."}
+
+        image_bytes = None
+        if not post.media_path:
+            if quote is None and post.quote_id:
+                quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
+            if quote is not None:
+                image_bytes = ensure_quote_media(post, quote)
+
+        try:
+            result = client.publish_content(
+                post.content,
+                image_url=post.media_path,
+                image_bytes=image_bytes,
+                image_filename=f"edgeofict-{post.id}.png",
+            )
+        except Exception as exc:
+            update_post_status(post, PostStatus.FAILED.value)
+            return {"status": "error", "message": str(exc)}
+
+        if result.get("status") == "posted":
+            update_post_status(post, PostStatus.POSTED.value)
+            post.post_id = str(result["tweet_id"])
+            return result
+
+        update_post_status(post, PostStatus.FAILED.value)
+        return result
+
+    def ensure_public_post_media(db_session, post: Post) -> str | None:
+        if post.media_path:
+            return post.media_path
+
+        if post.quote_id:
+            quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
+            if quote is not None:
+                ensure_quote_media(post, quote)
+
+        return post.media_path
+
     def create_post_from_quote(db_session, quote: Quote, use_ai: bool, status: str = PostStatus.PENDING.value):
         planner = PostPlanner()
         content = planner.format_quote_for_twitter(quote, use_ai=use_ai)
@@ -246,6 +336,11 @@ def create_app(test_config=None):
         if status == PostStatus.APPROVED.value:
             post.approved_at = datetime.now(UTC)
         db_session.add(post)
+        db_session.flush()
+        try:
+            ensure_quote_media(post, quote)
+        except Exception:
+            pass
         quote.approved = True
         quote.used_count = (quote.used_count or 0) + 1
         quote.last_used = datetime.now(UTC)
@@ -499,6 +594,13 @@ def create_app(test_config=None):
                 elif action == "queue-approved":
                     post = create_post_from_quote(db_session, quote, use_ai=use_ai, status=PostStatus.APPROVED.value)
                     flash(f"Queued approved post #{post.id} from quote #{quote.id}.", "success")
+                elif action == "share-x":
+                    post = create_post_from_quote(db_session, quote, use_ai=use_ai, status=PostStatus.APPROVED.value)
+                    result = publish_post_to_x(db_session, post, quote=quote)
+                    if result.get("status") == "posted":
+                        flash(f"Shared quote #{quote.id} to X as post #{post.id}.", "success")
+                    else:
+                        flash(result.get("message") or "X publish failed.", "error")
                 else:
                     flash("Unknown quote action.", "error")
         except Exception as exc:
@@ -542,30 +644,29 @@ def create_app(test_config=None):
                     if post.status != PostStatus.APPROVED.value:
                         flash("Approve the post before publishing to X.", "error")
                         return redirect(url_for("dashboard"))
-                    client = TwitterClient(dry_run=False)
-                    if not client.is_configured():
-                        flash("X/Twitter credentials are not configured.", "error")
+                    result = publish_post_to_x(db_session, post)
+                    if result.get("status") != "posted":
+                        flash(result.get("message") or "X publish failed.", "error")
                         return redirect(url_for("dashboard"))
-                    result = client.client.create_tweet(text=post.content)
-                    update_post_status(post, PostStatus.POSTED.value)
-                    post.post_id = str(result.data["id"])
-                    flash(f"Published post #{post.id} to X.", "success")
+                    flash(f"Shared post #{post.id} to X.", "success")
                 elif action == "publish-facebook":
                     client = FacebookClient()
                     if not client.is_configured():
                         flash("Facebook credentials are not configured.", "error")
                         return redirect(url_for("dashboard"))
-                    result = client.post_image(post.media_path, post.content) if post.media_path else client.post_text(post.content)
+                    media_url = ensure_public_post_media(db_session, post)
+                    result = client.post_image(media_url, post.content) if media_url else client.post_text(post.content)
                     flash(f"Posted to Facebook: {result.get('url')}", "success")
                 elif action == "publish-instagram":
-                    if not post.media_path:
+                    media_url = ensure_public_post_media(db_session, post)
+                    if not media_url:
                         flash("Instagram publishing requires an image URL in the media field.", "error")
                         return redirect(url_for("dashboard"))
                     client = InstagramClient()
                     if not client.is_configured():
                         flash("Instagram credentials are not configured.", "error")
                         return redirect(url_for("dashboard"))
-                    result = client.post_image(post.media_path, post.content)
+                    result = client.post_image(media_url, post.content)
                     flash(f"Posted to Instagram: {result.get('url')}", "success")
                 else:
                     flash("Unknown post action.", "error")
@@ -635,6 +736,14 @@ def create_app(test_config=None):
                 return jsonify({"error": "No Stoic entry found for today."}), 404
 
             content = stoic_service.generate_stoic_trading_content(entry)
+            media = build_stoic_media(
+                {
+                    "date": entry.get("date", ""),
+                    "title": entry.get("title", ""),
+                    "author": entry.get("author", ""),
+                    **content,
+                }
+            )
             return jsonify(
                 {
                     "success": True,
@@ -643,6 +752,8 @@ def create_app(test_config=None):
                     "author": entry.get("author", ""),
                     "source": entry.get("source", ""),
                     "quote": entry.get("quote", ""),
+                    "image_data_uri": media["image_data_uri"],
+                    "image_url": media["image_url"],
                     **content,
                 }
             )

@@ -1,5 +1,6 @@
 """Cloudinary image upload client."""
 import os
+import base64
 import hashlib
 import time
 import logging
@@ -81,6 +82,15 @@ class CloudinaryClient:
             'public_id': data.get('public_id'),
             'url': data.get('url')
         }
+
+    def upload_bytes(self, image_bytes, folder='edgeofict', public_id=None, mime_type='image/png'):
+        """Upload raw image bytes to Cloudinary."""
+        encoded = base64.b64encode(image_bytes).decode('ascii')
+        return self.upload_base64(
+            f'data:{mime_type};base64,{encoded}',
+            folder=folder,
+            public_id=public_id,
+        )
 
     def verify_credentials(self):
         """Verify Cloudinary credentials are valid."""

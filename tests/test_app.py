@@ -3,6 +3,7 @@ import tempfile
 
 import pytest
 
+import app as app_module
 from app import create_app
 from core.models import Base, Post, Quote, get_session
 from core import stoic_service
@@ -147,6 +148,7 @@ def test_generate_and_queue_stoic_post(app_client, monkeypatch):
             "tweet": "Control your choices, not the tape. #ict #trader #tradingpsychology #stoic",
         },
     )
+    monkeypatch.setattr(app_module.brand_media, "render_stoic_card", lambda payload: b"fake-stoic-card")
 
     client.post("/login", data={"username": "admin", "password": "secret"})
     response = client.post("/api/stoic/generate")
@@ -155,10 +157,11 @@ def test_generate_and_queue_stoic_post(app_client, monkeypatch):
     payload = response.get_json()
     assert payload["success"] is True
     assert payload["tweet"].startswith("Control your choices")
+    assert payload["image_data_uri"].startswith("data:image/png;base64,")
 
     queue_response = client.post(
         "/api/stoic/queue",
-        json={"tweet": payload["tweet"], "status": "approved"},
+        json={"tweet": payload["tweet"], "status": "approved", "image_url": payload.get("image_url")},
     )
 
     assert queue_response.status_code == 200
@@ -170,4 +173,40 @@ def test_generate_and_queue_stoic_post(app_client, monkeypatch):
     assert post is not None
     assert post.status == "approved"
     assert post.content == payload["tweet"]
+    session.close()
+
+
+def test_share_quote_to_x_creates_published_post(app_client, monkeypatch):
+    client, app = app_client
+
+    monkeypatch.setattr(app_module.brand_media, "render_quote_card", lambda content: b"fake-quote-card")
+
+    class FakeTwitterClient:
+        def __init__(self, dry_run=False):
+            self.dry_run = dry_run
+
+        def is_configured(self):
+            return True
+
+        def publish_content(self, text, **kwargs):
+            assert text
+            return {"status": "posted", "tweet_id": "tw-123", "url": "https://x.com/test/status/tw-123"}
+
+    monkeypatch.setattr(app_module, "TwitterClient", FakeTwitterClient)
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        "/actions/quotes/1",
+        data={"action": "share-x", "use_ai": "true"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Shared quote #1 to X as post #1." in response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    post = session.query(Post).filter(Post.id == 1).first()
+    assert post is not None
+    assert post.status == "posted"
+    assert post.post_id == "tw-123"
     session.close()

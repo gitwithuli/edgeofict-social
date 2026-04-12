@@ -107,9 +107,15 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
+        const previewSource = payload.image_url || payload.image_data_uri || "";
         stoicResult.classList.remove("empty-state");
         stoicResult.innerHTML = `
             <div class="stoic-result-card">
+                ${
+                    previewSource
+                        ? `<div class="stoic-preview-image"><img src="${escapeHtml(previewSource)}" alt="Stoic card preview"></div>`
+                        : ""
+                }
                 <div class="stoic-topline">
                     <div>
                         <strong>${escapeHtml(payload.title)}</strong>
@@ -165,6 +171,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 body: JSON.stringify({
                     tweet: stoicPayload.tweet,
                     status,
+                    image_url: stoicPayload.image_url || null,
                 }),
             });
 

@@ -37,6 +37,7 @@ def test_run_daily_stoic_publish_posts_once(automation_db, monkeypatch):
         "generate_stoic_trading_content",
         lambda entry: {"tweet": "Automatic Stoic post"},
     )
+    monkeypatch.setattr(automation.brand_media, "render_stoic_card", lambda payload: b"stoic-card")
 
     class FakeTwitterClient:
         def __init__(self, dry_run=False):
@@ -45,7 +46,7 @@ def test_run_daily_stoic_publish_posts_once(automation_db, monkeypatch):
         def is_configured(self):
             return True
 
-        def post_by_id(self, post_id, confirm=False):
+        def post_by_id(self, post_id, confirm=False, **kwargs):
             session = get_session()
             post = session.query(Post).filter(Post.id == post_id).first()
             post.status = PostStatus.POSTED.value
@@ -81,6 +82,7 @@ def test_run_daily_stoic_publish_skips_duplicate_run(automation_db, monkeypatch)
         "generate_stoic_trading_content",
         lambda entry: {"tweet": "Automatic Stoic post"},
     )
+    monkeypatch.setattr(automation.brand_media, "render_stoic_card", lambda payload: b"stoic-card")
 
     class FakeTwitterClient:
         def __init__(self, dry_run=False):
@@ -89,7 +91,7 @@ def test_run_daily_stoic_publish_skips_duplicate_run(automation_db, monkeypatch)
         def is_configured(self):
             return True
 
-        def post_by_id(self, post_id, confirm=False):
+        def post_by_id(self, post_id, confirm=False, **kwargs):
             session = get_session()
             post = session.query(Post).filter(Post.id == post_id).first()
             post.status = PostStatus.POSTED.value

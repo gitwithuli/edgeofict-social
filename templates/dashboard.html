@@ -114,7 +114,11 @@
                             </form>
                             <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
                                 <input type="hidden" name="use_ai" value="true">
-                                <button type="submit" name="action" value="queue-approved" class="btn btn-primary btn-mini">Queue</button>
+                                <button type="submit" name="action" value="queue-approved" class="btn btn-secondary btn-mini">Queue</button>
+                            </form>
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
+                                <input type="hidden" name="use_ai" value="true">
+                                <button type="submit" name="action" value="share-x" class="btn btn-primary btn-mini">Share X</button>
                             </form>
                         </div>
                     </article>
@@ -143,6 +147,7 @@
                         </div>
                         <p>{{ post.content[:180] }}{% if post.content|length > 180 %}...{% endif %}</p>
                         <div class="mini-source">{{ post.scheduled_time | datetime_human }}</div>
+                        <div class="mini-note">{{ "Branded image ready" if post.media_path else ("Quote card will be generated on share" if post.quote_id else "No image attached yet") }}</div>
                         <div class="mini-actions">
                             <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}">
                                 <button type="submit" name="action" value="approve" class="btn btn-primary btn-mini">Approve</button>
@@ -175,9 +180,10 @@
                         </div>
                         <p>{{ post.content[:180] }}{% if post.content|length > 180 %}...{% endif %}</p>
                         <div class="mini-source">{{ post.scheduled_time | datetime_human }}</div>
+                        <div class="mini-note">{{ "Branded image ready" if post.media_path else ("Auto card on X share" if post.quote_id else "Text-only unless an image is attached") }}</div>
                         <div class="mini-actions">
                             <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}">
-                                <button type="submit" name="action" value="publish-x" class="btn btn-primary btn-mini">Publish X</button>
+                                <button type="submit" name="action" value="publish-x" class="btn btn-primary btn-mini">Share X</button>
                             </form>
                             <a href="#publishing-details" class="btn btn-ghost btn-mini mini-link">Edit below</a>
                         </div>
@@ -406,6 +412,7 @@
                             <button type="submit" name="action" value="approve" class="btn btn-ghost">Approve</button>
                             <button type="submit" name="action" value="queue" class="btn btn-secondary">Queue Draft</button>
                             <button type="submit" name="action" value="queue-approved" class="btn btn-primary">Queue Approved</button>
+                            <button type="submit" name="action" value="share-x" class="btn btn-secondary">Share X Now</button>
                         </div>
                     </form>
                 </article>
@@ -436,6 +443,7 @@
                         </label>
                         <button type="submit" name="action" value="queue" class="btn btn-ghost">Draft</button>
                         <button type="submit" name="action" value="queue-approved" class="btn btn-secondary">Approved</button>
+                        <button type="submit" name="action" value="share-x" class="btn btn-primary">Share X</button>
                     </form>
                     {% endfor %}
                 </div>
@@ -497,11 +505,12 @@
                             <span>Image URL</span>
                             <input type="url" name="media_path" value="{{ post.media_path or '' }}" placeholder="https://...">
                         </label>
+                        <div class="mini-note">{{ "Branded image already attached." if post.media_path else ("Leave this blank and the app will generate the quote card on share." if post.quote_id else "Add an image URL if this post needs media.") }}</div>
                         <div class="action-row action-wrap">
                             <button type="submit" name="action" value="save" class="btn btn-ghost">Save</button>
                             <button type="submit" name="action" value="approve" class="btn btn-primary">Approve</button>
                             <button type="submit" name="action" value="publish-facebook" class="btn btn-secondary">Facebook</button>
-                            <button type="submit" name="action" value="publish-instagram" class="btn btn-secondary" {% if not post.media_path %}disabled{% endif %}>Instagram</button>
+                            <button type="submit" name="action" value="publish-instagram" class="btn btn-secondary" {% if not post.media_path and not post.quote_id %}disabled{% endif %}>Instagram</button>
                         </div>
                     </form>
                 </details>
@@ -552,12 +561,13 @@
                             <span>Image URL</span>
                             <input type="url" name="media_path" value="{{ post.media_path or '' }}" placeholder="https://...">
                         </label>
+                        <div class="mini-note">{{ "Branded image already attached." if post.media_path else ("Leave this blank and the app will generate the quote card for X on share." if post.quote_id else "Add an image URL if this post needs media.") }}</div>
                         <div class="action-row action-wrap">
                             <button type="submit" name="action" value="save" class="btn btn-ghost">Save</button>
                             <button type="submit" name="action" value="draft" class="btn btn-ghost">Back To Draft</button>
-                            <button type="submit" name="action" value="publish-x" class="btn btn-primary">Publish to X</button>
+                            <button type="submit" name="action" value="publish-x" class="btn btn-primary">Share X</button>
                             <button type="submit" name="action" value="publish-facebook" class="btn btn-secondary">Facebook</button>
-                            <button type="submit" name="action" value="publish-instagram" class="btn btn-secondary" {% if not post.media_path %}disabled{% endif %}>Instagram</button>
+                            <button type="submit" name="action" value="publish-instagram" class="btn btn-secondary" {% if not post.media_path and not post.quote_id %}disabled{% endif %}>Instagram</button>
                         </div>
                     </form>
                 </details>
