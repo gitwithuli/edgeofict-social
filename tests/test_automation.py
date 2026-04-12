@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 import pytest
 
 from core import automation
-from core.models import AutomationRun, Base, Post, PostStatus, get_engine, get_session
+from core.models import AutomationRun, Base, Post, PostStatus, Quote, get_engine, get_session
 
 
 @pytest.fixture
@@ -16,6 +16,15 @@ def automation_db(monkeypatch):
     database_url = f"sqlite:///{db_path}"
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("AUTO_STOIC_TIMEZONE", "UTC")
+    for key in (
+        "CLOUDINARY_CLOUD_NAME",
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        "FACEBOOK_PAGE_ID",
+        "FACEBOOK_PAGE_TOKEN",
+        "INSTAGRAM_ACCOUNT_ID",
+    ):
+        monkeypatch.delenv(key, raising=False)
 
     engine = get_engine(database_url)
     Base.metadata.create_all(engine)
@@ -105,6 +114,113 @@ def test_run_daily_stoic_publish_skips_duplicate_run(automation_db, monkeypatch)
 
     first = automation.run_daily_stoic_publish(run_hour=datetime.now(timezone.utc).hour)
     second = automation.run_daily_stoic_publish(run_hour=datetime.now(timezone.utc).hour)
+
+    assert first.status == "posted"
+    assert second.status == "skipped"
+
+
+def test_run_daily_quote_publish_posts_next_approved_quote(automation_db, monkeypatch):
+    session = get_session()
+    quote = Quote(
+        content="Consistency compounds faster than prediction.",
+        source="The Sands of Time",
+        topic="Discipline",
+        quality_score=9.0,
+        approved=True,
+    )
+    session.add(quote)
+    session.commit()
+
+    post = Post(
+        quote_id=quote.id,
+        platform="twitter",
+        content='"Consistency compounds faster than prediction."\n\nTrack your edge.\n\n#EdgeOfICT #ICTTrading #TradingDiscipline',
+        status=PostStatus.APPROVED.value,
+    )
+    session.add(post)
+    session.commit()
+    session.close()
+
+    monkeypatch.setattr(automation.brand_media, "render_quote_card", lambda text: b"quote-card")
+
+    class FakeTwitterClient:
+        def __init__(self, dry_run=False):
+            self.dry_run = dry_run
+
+        def is_configured(self):
+            return True
+
+        def post_by_id(self, post_id, confirm=False, **kwargs):
+            assert kwargs.get("image_bytes") == b"quote-card"
+            session = get_session()
+            db_post = session.query(Post).filter(Post.id == post_id).first()
+            db_post.status = PostStatus.POSTED.value
+            db_post.posted_time = datetime.now(timezone.utc)
+            db_post.post_id = "quote123"
+            session.commit()
+            session.close()
+            return {"status": "posted", "url": "https://x.com/test/status/quote123"}
+
+    monkeypatch.setattr(automation, "TwitterClient", FakeTwitterClient)
+
+    result = automation.run_daily_quote_publish(run_hour=datetime.now(timezone.utc).hour)
+
+    assert result.status == "posted"
+    assert result.post_id == 1
+
+    session = get_session()
+    run = session.query(AutomationRun).filter(AutomationRun.task_key == "daily_quote").first()
+    saved_post = session.query(Post).filter(Post.id == 1).first()
+    assert run.status == "posted"
+    assert saved_post.status == "posted"
+    session.close()
+
+
+def test_run_daily_quote_publish_skips_duplicate_run(automation_db, monkeypatch):
+    session = get_session()
+    quote = Quote(
+        content="Discipline is a repeatable edge.",
+        source="The Sands of Time",
+        topic="Discipline",
+        quality_score=8.7,
+        approved=True,
+    )
+    session.add(quote)
+    session.commit()
+    session.add(
+        Post(
+            quote_id=quote.id,
+            platform="twitter",
+            content="Discipline is a repeatable edge.",
+            status=PostStatus.APPROVED.value,
+        )
+    )
+    session.commit()
+    session.close()
+
+    monkeypatch.setattr(automation.brand_media, "render_quote_card", lambda text: b"quote-card")
+
+    class FakeTwitterClient:
+        def __init__(self, dry_run=False):
+            self.dry_run = dry_run
+
+        def is_configured(self):
+            return True
+
+        def post_by_id(self, post_id, confirm=False, **kwargs):
+            session = get_session()
+            db_post = session.query(Post).filter(Post.id == post_id).first()
+            db_post.status = PostStatus.POSTED.value
+            db_post.posted_time = datetime.now(timezone.utc)
+            db_post.post_id = "quote456"
+            session.commit()
+            session.close()
+            return {"status": "posted", "url": "https://x.com/test/status/quote456"}
+
+    monkeypatch.setattr(automation, "TwitterClient", FakeTwitterClient)
+
+    first = automation.run_daily_quote_publish(run_hour=datetime.now(timezone.utc).hour)
+    second = automation.run_daily_quote_publish(run_hour=datetime.now(timezone.utc).hour)
 
     assert first.status == "posted"
     assert second.status == "skipped"

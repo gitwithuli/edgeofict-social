@@ -115,10 +115,10 @@ def test_extract_quotes_uses_original_upload_name(app_client, monkeypatch):
     captured = {}
 
     class FakeExtractor:
-        def extract_and_save(self, file_path, source_name=None):
+        def extract_and_save(self, file_path, source_name=None, return_quote_ids=False):
             captured["source_name"] = source_name
             captured["file_path"] = file_path
-            return 9, 7
+            return 9, 7, []
 
     monkeypatch.setattr(app_module, "ContentExtractor", FakeExtractor)
 
@@ -133,6 +133,45 @@ def test_extract_quotes_uses_original_upload_name(app_client, monkeypatch):
     assert response.status_code == 200
     assert captured["source_name"] == "The Sands of Time"
     assert b"Imported 7 new quotes from The Sands of Time.txt" in response.data
+
+
+def test_extract_quotes_auto_queues_ready_posts(app_client, monkeypatch):
+    client, app = app_client
+
+    class FakeExtractor:
+        def extract_and_save(self, file_path, source_name=None, return_quote_ids=False):
+            session = get_session(app.config["DB_ENGINE"])
+            quote = Quote(
+                content="Consistency is the edge.",
+                source=source_name,
+                topic="Discipline",
+                quality_score=8.8,
+                approved=False,
+            )
+            session.add(quote)
+            session.commit()
+            quote_id = quote.id
+            session.close()
+            return 1, 1, [quote_id]
+
+    monkeypatch.setattr(app_module, "ContentExtractor", FakeExtractor)
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        "/actions/extract-quotes",
+        data={"document": (io.BytesIO(b"hello"), "Evening Quotes.txt")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"queued 1 ready posts" in response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    posts = session.query(Post).filter(Post.status == "approved").all()
+    assert len(posts) == 1
+    assert posts[0].quote_id is not None
+    session.close()
 
 
 def test_stoic_entry_endpoint(app_client, monkeypatch):

@@ -1,4 +1,4 @@
-name: Daily Stoic Autopost
+name: Daily Social Autopost
 
 on:
   schedule:
@@ -6,11 +6,12 @@ on:
   workflow_dispatch:
 
 jobs:
-  daily-stoic:
+  daily-social:
     runs-on: ubuntu-latest
     env:
       AUTO_STOIC_TIMEZONE: America/New_York
       AUTO_STOIC_HOUR: "9"
+      AUTO_QUOTE_HOUR: "19"
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
@@ -18,6 +19,12 @@ jobs:
       TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
       TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
       TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
+      FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
+      FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}
+      INSTAGRAM_ACCOUNT_ID: ${{ secrets.INSTAGRAM_ACCOUNT_ID }}
+      CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -30,5 +37,8 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run daily Stoic publisher
+      - name: Run morning Stoic publisher
         run: python main.py auto-stoic --run-hour "${AUTO_STOIC_HOUR}"
+
+      - name: Run evening quote publisher
+        run: python main.py auto-quote --run-hour "${AUTO_QUOTE_HOUR}"

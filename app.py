@@ -389,6 +389,24 @@ def create_app(test_config=None):
         quote.last_used = datetime.now(UTC)
         return post
 
+    def auto_queue_imported_quotes(db_session, quote_ids: list[int], *, use_ai: bool = False) -> int:
+        if not quote_ids:
+            return 0
+
+        quotes = (
+            db_session.query(Quote)
+            .filter(Quote.id.in_(quote_ids))
+            .order_by(Quote.id.asc())
+            .all()
+        )
+
+        created = 0
+        for quote in quotes:
+            create_post_from_quote(db_session, quote, use_ai=use_ai, status=PostStatus.APPROVED.value)
+            created += 1
+
+        return created
+
     def get_dashboard_stoic_entry():
         try:
             return stoic_service.get_stoic_entry_for_today()
@@ -422,7 +440,6 @@ def create_app(test_config=None):
                 db_session.query(Post)
                 .filter(Post.status == PostStatus.APPROVED.value)
                 .order_by(Post.scheduled_time.is_(None), Post.scheduled_time.asc(), Post.created_at.desc())
-                .limit(18)
                 .all()
             )
             posted_posts = (
@@ -586,8 +603,18 @@ def create_app(test_config=None):
                 temp_path = temp_file.name
 
             extractor = ContentExtractor()
-            extracted, saved = extractor.extract_and_save(temp_path, source_name=source_name)
-            flash(f"Imported {saved} new quotes from {upload.filename} ({extracted} extracted).", "success")
+            result = extractor.extract_and_save(temp_path, source_name=source_name, return_quote_ids=True)
+            extracted, saved, saved_quote_ids = result
+
+            created_posts = 0
+            if saved_quote_ids:
+                with db_session_scope() as db_session:
+                    created_posts = auto_queue_imported_quotes(db_session, saved_quote_ids, use_ai=False)
+
+            flash(
+                f"Imported {saved} new quotes from {upload.filename} ({extracted} extracted) and queued {created_posts} ready posts.",
+                "success",
+            )
         except ValueError as exc:
             flash(str(exc), "error")
         except Exception as exc:

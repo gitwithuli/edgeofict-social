@@ -115,12 +115,13 @@ class ContentExtractor:
         source_name = source_name or get_document_name(file_path)
         return self.extract_quotes_from_text(text, source_name)
 
-    def save_quotes_to_db(self, quotes: list[dict], session=None) -> int:
+    def save_quotes_to_db(self, quotes: list[dict], session=None, return_quote_ids: bool = False):
         if session is None:
             init_db()
             session = get_session()
 
         saved_count = 0
+        saved_quote_ids: list[int] = []
         for quote_data in quotes:
             existing = session.query(Quote).filter(
                 Quote.content == quote_data["content"]
@@ -138,12 +139,19 @@ class ContentExtractor:
                 created_at=datetime.now(timezone.utc)
             )
             session.add(quote)
+            session.flush()
             saved_count += 1
+            saved_quote_ids.append(quote.id)
 
         session.commit()
+        if return_quote_ids:
+            return saved_count, saved_quote_ids
         return saved_count
 
-    def extract_and_save(self, file_path: str, source_name: Optional[str] = None) -> tuple[int, int]:
+    def extract_and_save(self, file_path: str, source_name: Optional[str] = None, return_quote_ids: bool = False):
         quotes = self.extract_from_document(file_path, source_name=source_name)
+        if return_quote_ids:
+            saved, saved_quote_ids = self.save_quotes_to_db(quotes, return_quote_ids=True)
+            return len(quotes), saved, saved_quote_ids
         saved = self.save_quotes_to_db(quotes)
         return len(quotes), saved
