@@ -18,6 +18,7 @@ from core.models import init_db, get_session, Quote, Post, PostStatus
 from core.document_parser import parse_document
 from core.content_extractor import ContentExtractor
 from core.approval_system import ApprovalSystem
+from core.automation import run_daily_stoic_publish
 from core.post_planner import PostPlanner
 from integrations.twitter_client import TwitterClient
 
@@ -201,6 +202,28 @@ def post(post_id: int, post_next: bool, confirm: bool, dry: bool):
         console.print(f"[red]Error: {result.get('message')}[/red]")
     elif result.get("url"):
         console.print(f"[blue]View at: {result['url']}[/blue]")
+
+
+@cli.command("auto-stoic")
+@click.option("--run-hour", type=int, default=None, help="Only run when the local automation hour matches")
+@click.option("--dry-run", "dry", is_flag=True, help="Generate and prepare the Stoic post without publishing")
+@click.option("--force", is_flag=True, help="Run even if today's Stoic automation already completed")
+def auto_stoic(run_hour: int | None, dry: bool, force: bool):
+    """Generate and publish the daily Stoic post."""
+    result = run_daily_stoic_publish(run_hour=run_hour, dry_run=dry, force=force)
+
+    if result.status in {"posted", "dry_run"}:
+        console.print(f"[green]{result.message}[/green]")
+        if result.url:
+            console.print(f"[blue]View at: {result.url}[/blue]")
+        raise SystemExit(0)
+
+    if result.status == "skipped":
+        console.print(f"[yellow]{result.message}[/yellow]")
+        raise SystemExit(0)
+
+    console.print(f"[red]{result.message}[/red]")
+    raise SystemExit(1)
 
 
 @cli.command()

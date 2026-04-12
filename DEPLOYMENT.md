@@ -58,3 +58,25 @@ python -c "from werkzeug.security import generate_password_hash; print(generate_
 ```
 
 Use the output as `ADMIN_PASSWORD_HASH`.
+
+## Automatic daily Stoic posting
+
+Do not rely on an in-process scheduler inside the Render free web service. It sleeps when idle.
+
+Use the included GitHub Actions workflow instead:
+
+- File: `.github/workflows/daily-stoic.yml`
+- Schedule: hourly
+- Guard: only runs when local hour matches `AUTO_STOIC_HOUR`
+- Default timezone: `America/New_York`
+- Default hour: `9`
+
+Add these GitHub repository secrets:
+
+- `DATABASE_URL`
+- `ANTHROPIC_API_KEY`
+- `TWITTER_API_KEY`
+- `TWITTER_API_SECRET`
+- `TWITTER_ACCESS_TOKEN`
+- `TWITTER_ACCESS_SECRET`
+- `TWITTER_BEARER_TOKEN`

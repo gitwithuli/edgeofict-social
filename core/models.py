@@ -1,5 +1,5 @@
 from functools import lru_cache
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, timezone
 import os
@@ -75,6 +75,25 @@ class Analytics(Base):
 
     def __repr__(self):
         return f"<Analytics(post_id={self.post_id}, engagement_rate={self.engagement_rate})>"
+
+
+class AutomationRun(Base):
+    __tablename__ = "automation_runs"
+    __table_args__ = (
+        UniqueConstraint("task_key", "run_date", name="uq_automation_runs_task_date"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    task_key = Column(String(100), nullable=False, index=True)
+    run_date = Column(String(10), nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="started", index=True)
+    detail = Column(Text)
+    post_id = Column(Integer, index=True)
+    created_at = Column(DateTime, default=utc_now)
+    updated_at = Column(DateTime, default=utc_now)
+
+    def __repr__(self):
+        return f"<AutomationRun(task_key='{self.task_key}', run_date='{self.run_date}', status='{self.status}')>"
 
 
 def resolve_db_url(db_url=None):
