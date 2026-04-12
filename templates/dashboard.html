@@ -81,7 +81,7 @@
     </section>
 
     <section class="ops-grid">
-        <article class="panel">
+        <article class="panel panel-intake">
             <div class="panel-head">
                 <div>
                     <span class="eyebrow">Intake</span>
@@ -97,7 +97,7 @@
             </form>
         </article>
 
-        <article class="panel">
+        <article class="panel panel-generate">
             <div class="panel-head">
                 <div>
                     <span class="eyebrow">Queue Builder</span>
@@ -123,7 +123,7 @@
             </form>
         </article>
 
-        <article class="panel">
+        <article class="panel panel-library">
             <div class="panel-head">
                 <div>
                     <span class="eyebrow">Library</span>
@@ -429,21 +429,23 @@
                     <span>{{ posted_posts|length }}</span>
                 </div>
                 {% if posted_posts %}
-                {% for post in posted_posts %}
-                <article class="post-card status-posted static-card">
-                    <div class="static-head">
-                        <strong>Post #{{ post.id }}</strong>
-                        <span>{{ post.posted_time | datetime_human }}</span>
-                    </div>
-                    <p>{{ post.content }}</p>
-                    <div class="static-meta">
-                        <span>{{ post.content|length }}/280</span>
-                        {% if post.post_id %}
-                        <a href="https://x.com/{{ profile.handle.lstrip('@') }}/status/{{ post.post_id }}" target="_blank" rel="noreferrer">View on X</a>
-                        {% endif %}
-                    </div>
-                </article>
-                {% endfor %}
+                <div class="published-grid">
+                    {% for post in posted_posts %}
+                    <article class="post-card status-posted static-card">
+                        <div class="static-head">
+                            <strong>Post #{{ post.id }}</strong>
+                            <span>{{ post.posted_time | datetime_human }}</span>
+                        </div>
+                        <p>{{ post.content }}</p>
+                        <div class="static-meta">
+                            <span>{{ post.content|length }}/280</span>
+                            {% if post.post_id %}
+                            <a href="https://x.com/{{ profile.handle.lstrip('@') }}/status/{{ post.post_id }}" target="_blank" rel="noreferrer">View on X</a>
+                            {% endif %}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
                 {% else %}
                 <div class="empty-state">No published posts yet.</div>
                 {% endif %}

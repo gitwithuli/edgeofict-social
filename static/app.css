@@ -33,6 +33,7 @@ body {
     margin: 0;
     min-height: 100vh;
     font-family: var(--sans);
+    font-size: 16px;
     color: var(--text);
     background:
         radial-gradient(circle at top left, rgba(66, 184, 154, 0.18), transparent 28%),
@@ -293,9 +294,9 @@ select:focus {
 }
 
 .page-shell {
-    max-width: 1500px;
+    max-width: 1680px;
     margin: 0 auto;
-    padding: 2rem;
+    padding: 2.5rem;
 }
 
 .topbar {
@@ -307,13 +308,15 @@ select:focus {
 }
 
 .topbar-copy h1 {
-    font-size: clamp(2rem, 4vw, 3.4rem);
+    font-size: clamp(2.4rem, 4vw, 4.2rem);
     margin: 0.5rem 0 0.8rem;
 }
 
 .topbar-copy p {
-    max-width: 42rem;
+    max-width: 52rem;
     margin: 0;
+    font-size: 1.08rem;
+    line-height: 1.6;
 }
 
 .flash-stack {
@@ -350,13 +353,13 @@ select:focus {
 }
 
 .mast-grid {
-    grid-template-columns: 1.4fr 1fr;
-    margin-bottom: 1.2rem;
+    grid-template-columns: 1fr;
+    margin-bottom: 1.5rem;
 }
 
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1rem;
 }
 
@@ -378,12 +381,18 @@ select:focus {
 .quote-card,
 .approved-quote,
 .static-card {
-    padding: 1.2rem;
+    padding: 1.5rem;
 }
 
 .hero-panel h2 {
-    font-size: clamp(1.4rem, 2vw, 2.2rem);
+    font-size: clamp(1.7rem, 2.8vw, 3rem);
     margin: 1rem 0 0.8rem;
+}
+
+.hero-panel p {
+    max-width: 62rem;
+    font-size: 1.05rem;
+    line-height: 1.65;
 }
 
 .hero-foot {
@@ -398,16 +407,33 @@ select:focus {
 
 .stat-card {
     display: grid;
-    gap: 0.4rem;
+    gap: 0.55rem;
+    min-height: 10rem;
+    align-content: start;
 }
 
 .stat-card strong {
-    font-size: 2.2rem;
+    font-size: clamp(2.4rem, 3vw, 3.2rem);
 }
 
 .ops-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     margin-bottom: 1.5rem;
+    align-items: stretch;
+}
+
+.panel-intake,
+.panel-generate {
+    min-height: 19rem;
+}
+
+.panel-library {
+    grid-column: 1 / span 2;
+}
+
+.integrations-panel {
+    grid-column: 3;
+    grid-row: 1 / span 2;
 }
 
 .panel-head {
@@ -420,7 +446,7 @@ select:focus {
 
 .panel-head h3 {
     margin-top: 0.4rem;
-    font-size: 1.3rem;
+    font-size: 1.45rem;
 }
 
 .source-list,
@@ -431,7 +457,7 @@ select:focus {
 
 .stoic-layout {
     display: grid;
-    grid-template-columns: 1.05fr 1.25fr;
+    grid-template-columns: 0.95fr 1.35fr;
     gap: 1rem;
     align-items: start;
 }
@@ -608,11 +634,11 @@ select:focus {
 
 .section-head h2 {
     margin-top: 0.45rem;
-    font-size: 1.8rem;
+    font-size: 2.1rem;
 }
 
 .quote-grid {
-    grid-template-columns: 1.55fr 0.95fr;
+    grid-template-columns: 1.2fr 0.95fr;
     align-items: start;
 }
 
@@ -652,13 +678,17 @@ select:focus {
 }
 
 .board {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: start;
 }
 
 .board-column {
     display: grid;
     gap: 0.85rem;
+}
+
+.board-column:last-child {
+    grid-column: 1 / -1;
 }
 
 .board-head {
@@ -731,6 +761,12 @@ select:focus {
     gap: 0.9rem;
 }
 
+.published-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.9rem;
+}
+
 .static-head,
 .static-meta {
     justify-content: space-between;
@@ -784,6 +820,18 @@ select:focus {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .panel-library,
+    .integrations-panel,
+    .board-column:last-child {
+        grid-column: auto;
+        grid-row: auto;
+    }
+
+    .published-grid,
+    .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .slim-panel {
         position: static;
     }
@@ -807,7 +855,8 @@ select:focus {
     .stats-grid,
     .ops-grid,
     .integration-grid,
-    .stoic-pillars {
+    .stoic-pillars,
+    .published-grid {
         grid-template-columns: 1fr;
     }
 
