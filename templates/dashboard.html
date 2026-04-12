@@ -80,6 +80,150 @@
         </div>
     </section>
 
+    <section class="section-block">
+        <div class="section-head">
+            <div>
+                <span class="eyebrow">Fast Lane</span>
+                <h2>Social Kanban</h2>
+            </div>
+            <span class="section-meta">Use this board for quick moves. The full editor stays below for deeper changes.</span>
+        </div>
+
+        <div class="kanban-strip">
+            <section class="kanban-column">
+                <div class="kanban-column-head">
+                    <div>
+                        <span class="eyebrow">Stage 01</span>
+                        <h3>Quote Review</h3>
+                    </div>
+                    <span class="kanban-count">{{ pending_quotes|length }}</span>
+                </div>
+                {% if pending_quotes %}
+                <div class="kanban-stack">
+                    {% for quote in pending_quotes[:6] %}
+                    <article class="kanban-card">
+                        <div class="mini-meta">
+                            <span>{{ quote.topic or "General" }}</span>
+                            <span>{{ "%.1f"|format(quote.quality_score or 0) }}</span>
+                        </div>
+                        <p>{{ quote.content[:180] }}{% if quote.content|length > 180 %}...{% endif %}</p>
+                        <div class="mini-source">{{ quote.source or "Unknown source" }}</div>
+                        <div class="mini-actions">
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
+                                <button type="submit" name="action" value="approve" class="btn btn-ghost btn-mini">Approve</button>
+                            </form>
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
+                                <input type="hidden" name="use_ai" value="true">
+                                <button type="submit" name="action" value="queue-approved" class="btn btn-primary btn-mini">Queue</button>
+                            </form>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">No quotes waiting for review.</div>
+                {% endif %}
+            </section>
+
+            <section class="kanban-column">
+                <div class="kanban-column-head">
+                    <div>
+                        <span class="eyebrow">Stage 02</span>
+                        <h3>Draft Queue</h3>
+                    </div>
+                    <span class="kanban-count">{{ pending_posts|length }}</span>
+                </div>
+                {% if pending_posts %}
+                <div class="kanban-stack">
+                    {% for post in pending_posts[:6] %}
+                    <article class="kanban-card">
+                        <div class="mini-meta">
+                            <span>Draft</span>
+                            <span>{{ post.content|length }}/280</span>
+                        </div>
+                        <p>{{ post.content[:180] }}{% if post.content|length > 180 %}...{% endif %}</p>
+                        <div class="mini-source">{{ post.scheduled_time | datetime_human }}</div>
+                        <div class="mini-actions">
+                            <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}">
+                                <button type="submit" name="action" value="approve" class="btn btn-primary btn-mini">Approve</button>
+                            </form>
+                            <a href="#publishing-details" class="btn btn-ghost btn-mini mini-link">Edit below</a>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">No draft posts in the queue.</div>
+                {% endif %}
+            </section>
+
+            <section class="kanban-column">
+                <div class="kanban-column-head">
+                    <div>
+                        <span class="eyebrow">Stage 03</span>
+                        <h3>Ready To Post</h3>
+                    </div>
+                    <span class="kanban-count">{{ approved_posts|length }}</span>
+                </div>
+                {% if approved_posts %}
+                <div class="kanban-stack">
+                    {% for post in approved_posts[:6] %}
+                    <article class="kanban-card">
+                        <div class="mini-meta">
+                            <span>Approved</span>
+                            <span>{{ post.content|length }}/280</span>
+                        </div>
+                        <p>{{ post.content[:180] }}{% if post.content|length > 180 %}...{% endif %}</p>
+                        <div class="mini-source">{{ post.scheduled_time | datetime_human }}</div>
+                        <div class="mini-actions">
+                            <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}">
+                                <button type="submit" name="action" value="publish-x" class="btn btn-primary btn-mini">Publish X</button>
+                            </form>
+                            <a href="#publishing-details" class="btn btn-ghost btn-mini mini-link">Edit below</a>
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">Nothing approved yet.</div>
+                {% endif %}
+            </section>
+
+            <section class="kanban-column">
+                <div class="kanban-column-head">
+                    <div>
+                        <span class="eyebrow">Stage 04</span>
+                        <h3>Published</h3>
+                    </div>
+                    <span class="kanban-count">{{ posted_posts|length }}</span>
+                </div>
+                {% if posted_posts %}
+                <div class="kanban-stack">
+                    {% for post in posted_posts[:6] %}
+                    <article class="kanban-card">
+                        <div class="mini-meta">
+                            <span>Live</span>
+                            <span>{{ post.content|length }}/280</span>
+                        </div>
+                        <p>{{ post.content[:180] }}{% if post.content|length > 180 %}...{% endif %}</p>
+                        <div class="mini-source">{{ post.posted_time | datetime_human }}</div>
+                        <div class="mini-actions">
+                            {% if post.post_id %}
+                            <a href="https://x.com/{{ profile.handle.lstrip('@') }}/status/{{ post.post_id }}" target="_blank" rel="noreferrer" class="btn btn-secondary btn-mini mini-link">View on X</a>
+                            {% else %}
+                            <span class="mini-note">Posted without saved X id</span>
+                            {% endif %}
+                        </div>
+                    </article>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state">No published posts yet.</div>
+                {% endif %}
+            </section>
+        </div>
+    </section>
+
     <section class="ops-grid">
         <article class="panel panel-intake">
             <div class="panel-head">
@@ -233,7 +377,7 @@
         </div>
     </section>
 
-    <section class="section-block">
+    <section class="section-block" id="detailed-review">
         <div class="section-head">
             <div>
                 <span class="eyebrow">Review</span>
@@ -302,7 +446,7 @@
         </div>
     </section>
 
-    <section class="section-block">
+    <section class="section-block" id="publishing-details">
         <div class="section-head">
             <div>
                 <span class="eyebrow">Publishing</span>

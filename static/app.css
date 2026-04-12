@@ -347,7 +347,8 @@ select:focus {
 .mast-grid,
 .ops-grid,
 .quote-grid,
-.board {
+.board,
+.kanban-strip {
     display: grid;
     gap: 1rem;
 }
@@ -361,6 +362,104 @@ select:focus {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1rem;
+}
+
+.kanban-strip {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 1.5rem;
+    align-items: start;
+}
+
+.kanban-column {
+    display: grid;
+    gap: 0.9rem;
+    padding: 1.25rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(16, 27, 24, 0.96), rgba(8, 14, 12, 0.94));
+    box-shadow: var(--shadow);
+    min-height: 26rem;
+}
+
+.kanban-column-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.kanban-column-head h3 {
+    margin: 0.4rem 0 0;
+    font-size: 1.35rem;
+}
+
+.kanban-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2.5rem;
+    height: 2.5rem;
+    padding: 0 0.8rem;
+    border-radius: 999px;
+    background: rgba(141, 217, 194, 0.08);
+    border: 1px solid rgba(141, 217, 194, 0.22);
+    font-family: var(--mono);
+    color: var(--soft);
+}
+
+.kanban-stack {
+    display: grid;
+    gap: 0.85rem;
+    align-content: start;
+}
+
+.kanban-card {
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem;
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    background: rgba(255, 255, 255, 0.03);
+}
+
+.kanban-card p {
+    margin: 0;
+    color: var(--soft);
+    line-height: 1.6;
+}
+
+.mini-meta {
+    display: flex;
+    justify-content: space-between;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.mini-source,
+.mini-note {
+    font-size: 0.9rem;
+    color: var(--muted);
+}
+
+.mini-actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.btn-mini {
+    padding: 0.62rem 0.9rem;
+    font-size: 0.88rem;
+}
+
+.mini-link {
+    text-decoration: none;
 }
 
 .panel,
@@ -820,6 +919,10 @@ select:focus {
         grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .kanban-strip {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .panel-library,
     .integrations-panel,
     .board-column:last-child {
@@ -856,7 +959,8 @@ select:focus {
     .ops-grid,
     .integration-grid,
     .stoic-pillars,
-    .published-grid {
+    .published-grid,
+    .kanban-strip {
         grid-template-columns: 1fr;
     }
 
