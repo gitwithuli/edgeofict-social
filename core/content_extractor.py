@@ -110,9 +110,9 @@ class ContentExtractor:
 
         return quotes
 
-    def extract_from_document(self, file_path: str) -> list[dict]:
+    def extract_from_document(self, file_path: str, source_name: Optional[str] = None) -> list[dict]:
         text = parse_document(file_path)
-        source_name = get_document_name(file_path)
+        source_name = source_name or get_document_name(file_path)
         return self.extract_quotes_from_text(text, source_name)
 
     def save_quotes_to_db(self, quotes: list[dict], session=None) -> int:
@@ -143,7 +143,7 @@ class ContentExtractor:
         session.commit()
         return saved_count
 
-    def extract_and_save(self, file_path: str) -> tuple[int, int]:
-        quotes = self.extract_from_document(file_path)
+    def extract_and_save(self, file_path: str, source_name: Optional[str] = None) -> tuple[int, int]:
+        quotes = self.extract_from_document(file_path, source_name=source_name)
         saved = self.save_quotes_to_db(quotes)
         return len(quotes), saved

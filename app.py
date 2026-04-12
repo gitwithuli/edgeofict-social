@@ -11,6 +11,7 @@ import tempfile
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from functools import wraps
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
@@ -52,6 +53,10 @@ PROFILE_CONFIG = {
     "handle": os.getenv("PROFILE_HANDLE", "@edgeofict"),
 }
 
+SOURCE_LABEL_OVERRIDES = {
+    "tmprq7h9hor": "The Sands of Time",
+}
+
 
 def parse_bool(value: str | bool | None, default: bool = False) -> bool:
     if value is None:
@@ -80,6 +85,13 @@ def is_safe_redirect_target(target: str | None) -> bool:
 def slug_fragment(value: str, fallback: str = "card") -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
     return slug[:48] or fallback
+
+
+def display_source_label(source: str | None) -> str:
+    cleaned = (source or "").strip()
+    if not cleaned:
+        return "Unknown"
+    return SOURCE_LABEL_OVERRIDES.get(cleaned, cleaned)
 
 
 def build_integration_hints():
@@ -476,6 +488,10 @@ def create_app(test_config=None):
             value = value.astimezone().replace(tzinfo=None)
         return value.strftime("%b %d, %Y %H:%M")
 
+    @app.template_filter("source_label")
+    def source_label(value):
+        return display_source_label(value)
+
     @app.errorhandler(503)
     def handle_service_config(error):
         return (
@@ -558,6 +574,7 @@ def create_app(test_config=None):
             return redirect(url_for("dashboard"))
 
         ext = upload.filename.rsplit(".", 1)[-1].lower()
+        source_name = Path(upload.filename).stem.strip() or "Imported Document"
         if ext not in {"pdf", "docx", "txt"}:
             flash("Unsupported file type. Use PDF, DOCX, or TXT.", "error")
             return redirect(url_for("dashboard"))
@@ -569,7 +586,7 @@ def create_app(test_config=None):
                 temp_path = temp_file.name
 
             extractor = ContentExtractor()
-            extracted, saved = extractor.extract_and_save(temp_path)
+            extracted, saved = extractor.extract_and_save(temp_path, source_name=source_name)
             flash(f"Imported {saved} new quotes from {upload.filename} ({extracted} extracted).", "success")
         except ValueError as exc:
             flash(str(exc), "error")

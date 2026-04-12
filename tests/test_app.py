@@ -1,5 +1,6 @@
 import os
 import tempfile
+import io
 
 import pytest
 
@@ -88,6 +89,50 @@ def test_login_and_quote_approval(app_client):
     quote = session.query(Quote).filter(Quote.id == 1).first()
     assert quote.approved is True
     session.close()
+
+
+def test_dashboard_uses_source_label_override(app_client):
+    client, app = app_client
+
+    session = get_session(app.config["DB_ENGINE"])
+    quote = session.query(Quote).filter(Quote.id == 1).first()
+    quote.source = "tmprq7h9hor"
+    session.commit()
+    session.close()
+
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": "secret"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"The Sands of Time" in response.data
+
+
+def test_extract_quotes_uses_original_upload_name(app_client, monkeypatch):
+    client, _ = app_client
+    captured = {}
+
+    class FakeExtractor:
+        def extract_and_save(self, file_path, source_name=None):
+            captured["source_name"] = source_name
+            captured["file_path"] = file_path
+            return 9, 7
+
+    monkeypatch.setattr(app_module, "ContentExtractor", FakeExtractor)
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        "/actions/extract-quotes",
+        data={"document": (io.BytesIO(b"hello"), "The Sands of Time.txt")},
+        content_type="multipart/form-data",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert captured["source_name"] == "The Sands of Time"
+    assert b"Imported 7 new quotes from The Sands of Time.txt" in response.data
 
 
 def test_stoic_entry_endpoint(app_client, monkeypatch):

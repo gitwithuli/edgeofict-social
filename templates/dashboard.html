@@ -107,7 +107,7 @@
                             <span>{{ "%.1f"|format(quote.quality_score or 0) }}</span>
                         </div>
                         <p>{{ quote.content[:180] }}{% if quote.content|length > 180 %}...{% endif %}</p>
-                        <div class="mini-source">{{ quote.source or "Unknown source" }}</div>
+                        <div class="mini-source">{{ quote.source | source_label }}</div>
                         <div class="mini-actions">
                             <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
                                 <button type="submit" name="action" value="approve" class="btn btn-ghost btn-mini">Approve</button>
@@ -284,7 +284,7 @@
             <div class="source-list">
                 {% for source, quote_count in documents %}
                 <div class="source-row">
-                    <span>{{ source or "Unknown" }}</span>
+                    <span>{{ source | source_label }}</span>
                     <span>{{ quote_count }} quotes</span>
                 </div>
                 {% endfor %}
@@ -343,7 +343,7 @@
                 <div class="stoic-entry-copy">
                     <div class="quote-meta">
                         <span>{{ stoic_entry.author }}</span>
-                        <span>{{ stoic_entry.source }}</span>
+                        <span>{{ stoic_entry.source | source_label }}</span>
                     </div>
                     <h4>{{ stoic_entry.title }}</h4>
                     <blockquote>{{ stoic_entry.quote }}</blockquote>
@@ -400,7 +400,7 @@
                     <div class="quote-meta">
                         <span class="score">{{ "%.1f"|format(quote.quality_score or 0) }}</span>
                         <span>{{ quote.topic or "General" }}</span>
-                        <span>{{ quote.source or "Unknown source" }}</span>
+                        <span>{{ quote.source | source_label }}</span>
                     </div>
                     <p>"{{ quote.content }}"</p>
                     <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}" class="stack-form">
