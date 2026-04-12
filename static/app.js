@@ -172,6 +172,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     tweet: stoicPayload.tweet,
                     status,
                     image_url: stoicPayload.image_url || null,
+                    render_payload: stoicPayload,
                 }),
             });
 

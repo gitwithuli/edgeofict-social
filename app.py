@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
@@ -281,6 +282,27 @@ def create_app(test_config=None):
             "image_url": image_url,
         }
 
+    def render_stoic_media_from_post(post: Post) -> bytes | None:
+        if post.render_kind != "stoic" or not post.render_payload:
+            return None
+
+        try:
+            payload = json.loads(post.render_payload)
+        except json.JSONDecodeError:
+            return None
+
+        image_bytes = brand_media.render_stoic_card(payload)
+        if not post.media_path:
+            public_id = f"stoic-{post.id}-{slug_fragment(payload.get('title', 'wisdom'))}"
+            image_url = upload_generated_image(
+                image_bytes,
+                folder="edgeofict/stoic",
+                public_id=public_id,
+            )
+            if image_url:
+                post.media_path = image_url
+        return image_bytes
+
     def publish_post_to_x(db_session, post: Post, quote: Quote | None = None) -> dict:
         client = TwitterClient(dry_run=False)
         if not client.is_configured():
@@ -288,9 +310,11 @@ def create_app(test_config=None):
 
         image_bytes = None
         if not post.media_path:
-            if quote is None and post.quote_id:
+            if post.render_kind == "stoic":
+                image_bytes = render_stoic_media_from_post(post)
+            elif quote is None and post.quote_id:
                 quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
-            if quote is not None:
+            if image_bytes is None and quote is not None:
                 image_bytes = ensure_quote_media(post, quote)
 
         try:
@@ -316,7 +340,13 @@ def create_app(test_config=None):
         if post.media_path:
             return post.media_path
 
-        if post.quote_id:
+        if post.render_kind == "stoic":
+            try:
+                render_stoic_media_from_post(post)
+            except Exception:
+                return post.media_path
+
+        if not post.media_path and post.quote_id:
             quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
             if quote is not None:
                 ensure_quote_media(post, quote)
@@ -330,6 +360,7 @@ def create_app(test_config=None):
             quote_id=quote.id,
             platform="twitter",
             content=content,
+            render_kind="quote",
             status=status,
             created_at=datetime.now(UTC),
         )
@@ -768,6 +799,7 @@ def create_app(test_config=None):
         payload = request.get_json(silent=True) or {}
         tweet = (payload.get("tweet") or "").strip()
         status = payload.get("status", PostStatus.PENDING.value)
+        render_payload = payload.get("render_payload") or {}
 
         if not tweet:
             return jsonify({"error": "Missing Stoic tweet text."}), 400
@@ -781,6 +813,8 @@ def create_app(test_config=None):
                     platform="twitter",
                     content=tweet,
                     media_path=payload.get("image_url") or None,
+                    render_kind="stoic",
+                    render_payload=json.dumps(render_payload),
                     status=status,
                     created_at=datetime.now(UTC),
                 )

@@ -1,5 +1,5 @@
 from functools import lru_cache
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, Text, UniqueConstraint, inspect, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 from datetime import datetime, timezone
 import os
@@ -47,6 +47,8 @@ class Post(Base):
     platform = Column(String(50))
     content = Column(Text)
     media_path = Column(String(500))
+    render_kind = Column(String(50))
+    render_payload = Column(Text)
     scheduled_time = Column(DateTime, index=True)
     posted_time = Column(DateTime)
     status = Column(String(20), default=PostStatus.PENDING.value, index=True)
@@ -137,4 +139,28 @@ def init_db(engine=None):
     if engine is None:
         engine = get_engine()
     Base.metadata.create_all(engine)
+    ensure_runtime_schema(engine)
     return engine
+
+
+def ensure_runtime_schema(engine):
+    """Apply lightweight additive schema changes for hosted deployments."""
+    inspector = inspect(engine)
+
+    if "posts" not in inspector.get_table_names():
+        return
+
+    existing_columns = {column["name"] for column in inspector.get_columns("posts")}
+    statements = []
+
+    if "render_kind" not in existing_columns:
+        statements.append("ALTER TABLE posts ADD COLUMN render_kind VARCHAR(50)")
+    if "render_payload" not in existing_columns:
+        statements.append("ALTER TABLE posts ADD COLUMN render_payload TEXT")
+
+    if not statements:
+        return
+
+    with engine.begin() as connection:
+        for statement in statements:
+            connection.execute(text(statement))

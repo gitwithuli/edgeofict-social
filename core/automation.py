@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -137,6 +138,15 @@ def run_daily_stoic_publish(
             platform="twitter",
             content=tweet,
             media_path=image_url,
+            render_kind="stoic",
+            render_payload=json.dumps(
+                {
+                    "date": entry.get("date", ""),
+                    "title": entry.get("title", ""),
+                    "author": entry.get("author", ""),
+                    **content,
+                }
+            ),
             status=PostStatus.APPROVED.value,
             approved_at=datetime.now(UTC),
             created_at=datetime.now(UTC),

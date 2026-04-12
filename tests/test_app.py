@@ -161,7 +161,12 @@ def test_generate_and_queue_stoic_post(app_client, monkeypatch):
 
     queue_response = client.post(
         "/api/stoic/queue",
-        json={"tweet": payload["tweet"], "status": "approved", "image_url": payload.get("image_url")},
+        json={
+            "tweet": payload["tweet"],
+            "status": "approved",
+            "image_url": payload.get("image_url"),
+            "render_payload": payload,
+        },
     )
 
     assert queue_response.status_code == 200
@@ -173,6 +178,8 @@ def test_generate_and_queue_stoic_post(app_client, monkeypatch):
     assert post is not None
     assert post.status == "approved"
     assert post.content == payload["tweet"]
+    assert post.render_kind == "stoic"
+    assert post.render_payload
     session.close()
 
 
@@ -209,4 +216,54 @@ def test_share_quote_to_x_creates_published_post(app_client, monkeypatch):
     assert post is not None
     assert post.status == "posted"
     assert post.post_id == "tw-123"
+    session.close()
+
+
+def test_publish_queued_stoic_post_generates_media_from_payload(app_client, monkeypatch):
+    client, app = app_client
+
+    monkeypatch.setattr(app_module.brand_media, "render_stoic_card", lambda payload: b"stoic-image")
+
+    captured = {}
+
+    class FakeTwitterClient:
+        def __init__(self, dry_run=False):
+            self.dry_run = dry_run
+
+        def is_configured(self):
+            return True
+
+        def publish_content(self, text, **kwargs):
+            captured["image_bytes"] = kwargs.get("image_bytes")
+            return {"status": "posted", "tweet_id": "stoic-456", "url": "https://x.com/test/status/stoic-456"}
+
+    monkeypatch.setattr(app_module, "TwitterClient", FakeTwitterClient)
+
+    session = get_session(app.config["DB_ENGINE"])
+    post = Post(
+        platform="twitter",
+        content="Stoic tweet",
+        status="approved",
+        render_kind="stoic",
+        render_payload='{"title":"Control","author":"Epictetus","date":"April 11"}',
+    )
+    session.add(post)
+    session.commit()
+    post_id = post.id
+    session.close()
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        f"/actions/posts/{post_id}",
+        data={"action": "publish-x"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert captured["image_bytes"] == b"stoic-image"
+
+    session = get_session(app.config["DB_ENGINE"])
+    post = session.query(Post).filter(Post.id == post_id).first()
+    assert post.status == "posted"
+    assert post.post_id == "stoic-456"
     session.close()
