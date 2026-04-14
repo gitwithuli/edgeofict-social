@@ -4,6 +4,21 @@ on:
   schedule:
     - cron: "7 * * * *"
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "Which automation to run"
+        required: true
+        default: "both"
+        type: choice
+        options:
+          - both
+          - stoic
+          - quote
+      force_publish:
+        description: "Ignore the hour gate and run now"
+        required: true
+        default: true
+        type: boolean
 
 jobs:
   daily-social:
@@ -38,7 +53,19 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Run morning Stoic publisher
-        run: python main.py auto-stoic --run-hour "${AUTO_STOIC_HOUR}"
+        if: github.event_name != 'workflow_dispatch' || inputs.mode == 'both' || inputs.mode == 'stoic'
+        run: |
+          FORCE_FLAG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_publish }}" = "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+          python main.py auto-stoic --run-hour "${AUTO_STOIC_HOUR}" ${FORCE_FLAG}
 
       - name: Run evening quote publisher
-        run: python main.py auto-quote --run-hour "${AUTO_QUOTE_HOUR}"
+        if: github.event_name != 'workflow_dispatch' || inputs.mode == 'both' || inputs.mode == 'quote'
+        run: |
+          FORCE_FLAG=""
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_publish }}" = "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+          python main.py auto-quote --run-hour "${AUTO_QUOTE_HOUR}" ${FORCE_FLAG}

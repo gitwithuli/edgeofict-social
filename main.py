@@ -205,7 +205,7 @@ def post(post_id: int, post_next: bool, confirm: bool, dry: bool):
 
 
 @cli.command("auto-stoic")
-@click.option("--run-hour", type=int, default=None, help="Only run when the local automation hour matches")
+@click.option("--run-hour", type=int, default=None, help="Only run after the local automation hour has been reached")
 @click.option("--dry-run", "dry", is_flag=True, help="Generate and prepare the Stoic post without publishing")
 @click.option("--force", is_flag=True, help="Run even if today's Stoic automation already completed")
 def auto_stoic(run_hour: int | None, dry: bool, force: bool):
@@ -227,7 +227,7 @@ def auto_stoic(run_hour: int | None, dry: bool, force: bool):
 
 
 @cli.command("auto-quote")
-@click.option("--run-hour", type=int, default=None, help="Only run when the local automation hour matches")
+@click.option("--run-hour", type=int, default=None, help="Only run after the local automation hour has been reached")
 @click.option("--dry-run", "dry", is_flag=True, help="Prepare and test the evening quote post without publishing")
 @click.option("--force", is_flag=True, help="Run even if today's quote automation already completed")
 def auto_quote(run_hour: int | None, dry: bool, force: bool):

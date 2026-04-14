@@ -11,6 +11,7 @@ from sqlalchemy import or_
 
 from .models import AutomationRun, Post, PostStatus, Quote, get_session, init_db
 from . import brand_media, stoic_service
+from .post_planner import build_quote_post_text
 from integrations.cloudinary_client import CloudinaryClient
 from integrations.facebook_client import FacebookClient
 from integrations.instagram_client import InstagramClient
@@ -37,7 +38,7 @@ def get_automation_timezone() -> ZoneInfo:
 def should_run_for_hour(run_hour: int | None, now_local: datetime) -> bool:
     if run_hour is None:
         return True
-    return now_local.hour == run_hour
+    return now_local.hour >= run_hour
 
 
 def slug_fragment(value: str, fallback: str = "card") -> str:
@@ -154,6 +155,58 @@ def compose_publish_message(primary_label: str, side_results: dict) -> str:
     return ", ".join(summary)
 
 
+def get_next_approved_quote(db_session) -> Quote | None:
+    active_quote_ids = (
+        db_session.query(Post.quote_id)
+        .filter(
+            Post.quote_id.isnot(None),
+            Post.status.in_([PostStatus.PENDING.value, PostStatus.APPROVED.value]),
+        )
+    )
+
+    quote = (
+        db_session.query(Quote)
+        .filter(
+            Quote.approved.is_(True),
+            ~Quote.id.in_(active_quote_ids),
+        )
+        .order_by(Quote.used_count.asc(), Quote.quality_score.desc(), Quote.created_at.asc())
+        .first()
+    )
+    if quote is not None:
+        return quote
+
+    return (
+        db_session.query(Quote)
+        .filter(Quote.approved.is_(True))
+        .order_by(Quote.used_count.asc(), Quote.quality_score.desc(), Quote.created_at.asc())
+        .first()
+    )
+
+
+def create_approved_quote_post(db_session) -> Post | None:
+    quote = get_next_approved_quote(db_session)
+    if quote is None:
+        return None
+
+    now_utc = datetime.now(UTC)
+    post = Post(
+        quote_id=quote.id,
+        platform="twitter",
+        content=build_quote_post_text(quote.content),
+        render_kind="quote",
+        status=PostStatus.APPROVED.value,
+        approved_at=now_utc,
+        created_at=now_utc,
+    )
+    db_session.add(post)
+    db_session.flush()
+
+    quote.used_count = (quote.used_count or 0) + 1
+    quote.last_used = now_utc
+    return post
+
+
 def run_daily_stoic_publish(
     *,
     run_hour: int | None = None,
@@ -167,7 +220,7 @@ def run_daily_stoic_publish(
         now_local = datetime.now(get_automation_timezone())
         run_date = now_local.date().isoformat()
 
-        if not should_run_for_hour(run_hour, now_local):
+        if not force and not should_run_for_hour(run_hour, now_local):
             return AutomationResult(
                 status="skipped",
                 message=f"Current local hour is {now_local.hour}; target hour is {run_hour}.",
@@ -294,7 +347,7 @@ def run_daily_quote_publish(
         now_local = datetime.now(get_automation_timezone())
         run_date = now_local.date().isoformat()
 
-        if not should_run_for_hour(run_hour, now_local):
+        if not force and not should_run_for_hour(run_hour, now_local):
             return AutomationResult(
                 status="skipped",
                 message=f"Current local hour is {now_local.hour}; target hour is {run_hour}.",
@@ -335,11 +388,13 @@ def run_daily_quote_publish(
         )
 
         if not post:
-            run.status = "skipped"
-            run.detail = "No approved quote posts available."
-            run.updated_at = datetime.now(UTC)
-            db_session.commit()
-            return AutomationResult(status="skipped", message=run.detail)
+            post = create_approved_quote_post(db_session)
+            if not post:
+                run.status = "skipped"
+                run.detail = "No approved quote posts or approved quotes available."
+                run.updated_at = datetime.now(UTC)
+                db_session.commit()
+                return AutomationResult(status="skipped", message=run.detail)
 
         quote = None
         if post.quote_id:

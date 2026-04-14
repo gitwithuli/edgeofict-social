@@ -17,7 +17,7 @@ Rules:
 1. Keep the post under 280 characters total (CRITICAL)
 2. The quote should be the focus
 3. Add a brief tie-in to EdgeOfICT's value (tracking trading edges)
-4. Include 2-3 relevant hashtags
+4. End every quote post with exactly these hashtags: #ICT #SMC #NQ #ES #Trading
 5. Keep it professional but approachable
 6. No emojis in the quote itself, but 1-2 subtle emojis OK elsewhere
 
@@ -26,9 +26,27 @@ Format template:
 
 [Brief tie-in to edge tracking - 1 short sentence]
 
-#EdgeOfICT #ICTTrading [1 more relevant tag]
+#ICT #SMC #NQ #ES #Trading
 
 Respond with just the formatted post text, nothing else."""
+
+DEFAULT_QUOTE_TIE_IN = "Track your edge."
+DEFAULT_QUOTE_HASHTAGS = "#ICT #SMC #NQ #ES #Trading"
+
+
+def build_quote_post_text(content: str, hashtags: str = DEFAULT_QUOTE_HASHTAGS) -> str:
+    template = f'"{content}"\n\n{DEFAULT_QUOTE_TIE_IN}\n\n{hashtags}'
+    if len(template) <= 280:
+        return template
+
+    overhead = len(f'""\n\n{DEFAULT_QUOTE_TIE_IN}\n\n{hashtags}')
+    max_quote_len = max(0, 280 - overhead - 3)
+    truncated = content[:max_quote_len].rstrip()
+    if truncated:
+        truncated = f"{truncated}..."
+    else:
+        truncated = "..."
+    return f'"{truncated}"\n\n{DEFAULT_QUOTE_TIE_IN}\n\n{hashtags}'
 
 
 class PostPlanner:
@@ -41,19 +59,14 @@ class PostPlanner:
     def format_quote_for_twitter(self, quote: Quote, use_ai: bool = True) -> str:
         if use_ai and self.api_key:
             try:
-                return self._format_quote_with_api(quote)
+                candidate = self._format_quote_with_api(quote)
+                if len(candidate) <= 280 and DEFAULT_QUOTE_HASHTAGS in candidate:
+                    return candidate
             except Exception:
                 pass
 
         hashtags = self._get_hashtags_for_topic(quote.topic)
-        template = f'"{quote.content}"\n\nTrack your edge.\n\n{hashtags}'
-
-        if len(template) > 280:
-            max_quote_len = 280 - len(f'"\n\nTrack your edge.\n\n{hashtags}') - 3
-            truncated = quote.content[:max_quote_len] + "..."
-            template = f'"{truncated}"\n\nTrack your edge.\n\n{hashtags}'
-
-        return template
+        return build_quote_post_text(quote.content, hashtags=hashtags)
 
     def _format_quote_with_api(self, quote: Quote) -> str:
         response = requests.post(
@@ -90,17 +103,7 @@ class PostPlanner:
         return text
 
     def _get_hashtags_for_topic(self, topic: str) -> str:
-        topic_tags = {
-            "Discipline": "#EdgeOfICT #ICTTrading #TradingDiscipline",
-            "Risk Management": "#EdgeOfICT #ICTTrading #RiskManagement",
-            "Edge Tracking": "#EdgeOfICT #EdgeTracking #ICTTrading",
-            "Market Structure": "#EdgeOfICT #ICTTrading #MarketStructure",
-            "Trading Psychology": "#EdgeOfICT #ICTTrading #TradingPsychology",
-            "Patience": "#EdgeOfICT #ICTTrading #TradingPatience",
-            "Model Following": "#EdgeOfICT #ICTTrading #TradingModel",
-            "Self-Improvement": "#EdgeOfICT #ICTTrading #TradingMindset",
-        }
-        return topic_tags.get(topic, "#EdgeOfICT #ICTTrading #SmartMoney")
+        return DEFAULT_QUOTE_HASHTAGS
 
     def get_next_quote(self, min_score: float = 7.0, exclude_source: Optional[str] = None) -> Optional[Quote]:
         query = self.session.query(Quote).filter(

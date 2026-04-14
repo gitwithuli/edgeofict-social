@@ -2042,7 +2042,7 @@ DASHBOARD_TEMPLATE = """
             } else {
                 // Quote - get full content and format as post preview
                 const quoteText = getFullContent(card) || card.querySelector('.card-content').textContent.replace(/^"|"$/g, '');
-                content = '"' + quoteText + '"\\n\\nTrack your edge.\\n\\n#EdgeOfICT #ICTTrading #Trading';
+                content = '"' + quoteText + '"\\n\\nTrack your edge.\\n\\n#ICT #SMC #NQ #ES #Trading';
             }
 
             // Format content with styled hashtags
@@ -3927,7 +3927,7 @@ def quote_to_post():
     if not quote:
         return jsonify({'error': 'Quote not found'}), 404
 
-    hashtags = "#EdgeOfICT #ICTTrading #Trading"
+    hashtags = "#ICT #SMC #NQ #ES #Trading"
     content = f'"{quote.content}"\n\nTrack your edge.\n\n{hashtags}'
     if len(content) > 280:
         max_len = 280 - len(f'"\n\nTrack your edge.\n\n{hashtags}') - 6
