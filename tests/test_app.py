@@ -1,6 +1,7 @@
 import os
 import tempfile
 import io
+import json
 
 import pytest
 
@@ -74,7 +75,7 @@ def test_login_and_quote_approval(app_client):
     )
 
     assert response.status_code == 200
-    assert b"Hosted queue control" in response.data
+    assert b"Quote Library" in response.data
 
     response = client.post(
         "/actions/quotes/1",
@@ -300,6 +301,89 @@ def test_share_quote_to_x_creates_published_post(app_client, monkeypatch):
     assert post is not None
     assert post.status == "posted"
     assert post.post_id == "tw-123"
+    session.close()
+
+
+def test_create_manual_quote_card_queues_post_with_render_payload(app_client, monkeypatch):
+    client, app = app_client
+
+    monkeypatch.setattr(app_module.brand_media, "render_quote_card", lambda content: b"manual-quote-card")
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        "/actions/manual-quote-card",
+        data={
+            "quote_text": "Wait for confirmation, not comfort.",
+            "post_text": "Wait for confirmation, not comfort. Trade the proof.",
+            "status": "approved",
+        },
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Queued manual quote card as post #1." in response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    post = session.query(Post).filter(Post.id == 1).first()
+    assert post is not None
+    assert post.status == "approved"
+    assert post.render_kind == "quote"
+    assert json.loads(post.render_payload)["quote_text"] == "Wait for confirmation, not comfort."
+    assert post.content == "Wait for confirmation, not comfort. Trade the proof."
+    session.close()
+
+
+def test_publish_manual_quote_post_generates_media_from_render_payload(app_client, monkeypatch):
+    client, app = app_client
+    captured = {}
+
+    def fake_render_quote_card(content):
+        captured["rendered_text"] = content
+        return b"manual-image"
+
+    monkeypatch.setattr(app_module.brand_media, "render_quote_card", fake_render_quote_card)
+
+    class FakeTwitterClient:
+        def __init__(self, dry_run=False):
+            self.dry_run = dry_run
+
+        def is_configured(self):
+            return True
+
+        def publish_content(self, text, **kwargs):
+            captured["image_bytes"] = kwargs.get("image_bytes")
+            return {"status": "posted", "tweet_id": "manual-123", "url": "https://x.com/test/status/manual-123"}
+
+    monkeypatch.setattr(app_module, "TwitterClient", FakeTwitterClient)
+
+    session = get_session(app.config["DB_ENGINE"])
+    post = Post(
+        platform="twitter",
+        content="Post copy that should not become the quote card.",
+        status="approved",
+        render_kind="quote",
+        render_payload=json.dumps({"quote_text": "The card should use this quote."}),
+    )
+    session.add(post)
+    session.commit()
+    post_id = post.id
+    session.close()
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        f"/actions/posts/{post_id}",
+        data={"action": "publish-x"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert captured["rendered_text"] == "The card should use this quote."
+    assert captured["image_bytes"] == b"manual-image"
+
+    session = get_session(app.config["DB_ENGINE"])
+    post = session.query(Post).filter(Post.id == post_id).first()
+    assert post.status == "posted"
+    assert post.post_id == "manual-123"
     session.close()
 
 

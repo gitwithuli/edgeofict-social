@@ -1,14 +1,14 @@
 {% extends "base.html" %}
 
-{% block body_class %}dashboard-body{% endblock %}
+{% block body_class %}dashboard-body dashboard-simple{% endblock %}
 
 {% block body %}
-<main class="page-shell">
-    <header class="topbar">
+<main class="page-shell simple-shell">
+    <header class="topbar simple-topbar">
         <div class="topbar-copy">
-            <div class="eyebrow">EdgeOfICT Social Agent</div>
-            <h1>{{ config.APP_TITLE }}</h1>
-            <p>Hosted queue control, document intake, and publishing in one place.</p>
+            <div class="eyebrow">EdgeOfICT Social</div>
+            <h1>Quote Library</h1>
+            <p>Auto-posting dashboard. This view is intentionally stripped down to the quote pool, the source documents behind it, and the posts that have already gone live.</p>
         </div>
 
         <div class="topbar-actions">
@@ -35,576 +35,149 @@
     {% endif %}
     {% endwith %}
 
-    <section class="mast-grid">
-        <article class="panel hero-panel">
-            <div class="hero-badges">
-                <span class="pill">DB: {{ database_label }}</span>
-                <span class="pill pill-muted">{{ "Password auth" if auth_enabled else "Auth disabled" }}</span>
-                <span class="pill pill-muted">Free-host ready</span>
-            </div>
-            <h2>Replace the self-hosted box with a stable control surface.</h2>
-            <p>This build keeps the existing quote extraction and post generation workflows, but moves day-to-day operation into a cleaner hosted dashboard.</p>
-            <div class="hero-foot">
-                <div>
-                    <span class="label">Next scheduled</span>
-                    <strong>{{ next_scheduled.scheduled_time | datetime_human if next_scheduled else "No post scheduled" }}</strong>
-                </div>
-                <div>
-                    <span class="label">Queue posture</span>
-                    <strong>{{ stats.posts_pending }} drafts / {{ stats.posts_approved }} approved</strong>
-                </div>
-            </div>
+    <section class="overview-grid">
+        <article class="panel overview-card">
+            <span class="label">Quotes In Library</span>
+            <strong>{{ stats.quotes_total }}</strong>
+            <span class="overview-sub">{{ stats.quotes_approved }} ready for auto-posting</span>
         </article>
 
-        <div class="stats-grid">
-            <article class="stat-card">
-                <span class="label">Quotes</span>
-                <strong>{{ stats.quotes_total }}</strong>
-                <span class="stat-sub">{{ stats.quotes_pending }} awaiting review</span>
-            </article>
-            <article class="stat-card">
-                <span class="label">Approved Quotes</span>
-                <strong>{{ stats.quotes_approved }}</strong>
-                <span class="stat-sub">Ready for queue creation</span>
-            </article>
-            <article class="stat-card">
-                <span class="label">Draft Posts</span>
-                <strong>{{ stats.posts_pending }}</strong>
-                <span class="stat-sub">Needs editing or approval</span>
-            </article>
-            <article class="stat-card">
-                <span class="label">Published</span>
-                <strong>{{ stats.posts_posted }}</strong>
-                <span class="stat-sub">Posted to X from this queue</span>
-            </article>
-        </div>
+        <article class="panel overview-card">
+            <span class="label">Waiting Review</span>
+            <strong>{{ stats.quotes_pending }}</strong>
+            <span class="overview-sub">Still stored, not yet available to post</span>
+        </article>
+
+        <article class="panel overview-card">
+            <span class="label">Posted To X</span>
+            <strong>{{ stats.posts_posted }}</strong>
+            <span class="overview-sub">Recent live posts tracked in the database</span>
+        </article>
+
+        <article class="panel overview-card">
+            <span class="label">Source Documents</span>
+            <strong>{{ stats.sources_total }}</strong>
+            <span class="overview-sub">{{ database_label }} backing store</span>
+        </article>
     </section>
 
-    <section class="section-block">
-        <div class="section-head">
-            <div>
-                <span class="eyebrow">Fast Lane</span>
-                <h2>Social Kanban</h2>
-            </div>
-            <span class="section-meta">Use this board for quick moves. The full editor stays below for deeper changes.</span>
-        </div>
-
-        <div class="kanban-strip">
-            <section class="kanban-column">
-                <div class="kanban-column-head">
-                    <div>
-                        <span class="eyebrow">Stage 01</span>
-                        <h3>Quote Review</h3>
-                    </div>
-                    <span class="kanban-count">{{ pending_quotes|length }}</span>
-                </div>
-                {% if pending_quotes %}
-                <div class="kanban-stack">
-                    {% for quote in pending_quotes[:6] %}
-                    <article class="kanban-card">
-                        <div class="mini-meta">
-                            <span>{{ quote.topic or "General" }}</span>
-                            <span>{{ "%.1f"|format(quote.quality_score or 0) }}</span>
-                        </div>
-                        <p>{{ quote.content[:180] }}{% if quote.content|length > 180 %}...{% endif %}</p>
-                        <div class="mini-source">{{ quote.source | source_label }}</div>
-                        <div class="mini-actions">
-                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
-                                <button type="submit" name="action" value="approve" class="btn btn-ghost btn-mini">Approve</button>
-                            </form>
-                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
-                                <input type="hidden" name="use_ai" value="true">
-                                <button type="submit" name="action" value="queue-approved" class="btn btn-secondary btn-mini">Queue</button>
-                            </form>
-                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
-                                <input type="hidden" name="use_ai" value="true">
-                                <button type="submit" name="action" value="share-x" class="btn btn-primary btn-mini">Share X</button>
-                            </form>
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state">No quotes waiting for review.</div>
-                {% endif %}
-            </section>
-
-            <section class="kanban-column">
-                <div class="kanban-column-head">
-                    <div>
-                        <span class="eyebrow">Stage 02</span>
-                        <h3>Draft Queue</h3>
-                    </div>
-                    <span class="kanban-count">{{ pending_posts|length }}</span>
-                </div>
-                {% if pending_posts %}
-                <div class="kanban-stack">
-                    {% for post in pending_posts[:6] %}
-                    <article class="kanban-card">
-                        <div class="mini-meta">
-                            <span>Draft</span>
-                            <span>{{ post.content|length }}/280</span>
-                        </div>
-                        <p>{{ post.content[:180] }}{% if post.content|length > 180 %}...{% endif %}</p>
-                        <div class="mini-source">{{ post.scheduled_time | datetime_human }}</div>
-                        <div class="mini-note">{{ "Branded image ready" if post.media_path else ("Quote card will be generated on share" if post.quote_id else "No image attached yet") }}</div>
-                        <div class="mini-actions">
-                            <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}">
-                                <button type="submit" name="action" value="approve" class="btn btn-primary btn-mini">Approve</button>
-                            </form>
-                            <a href="#publishing-details" class="btn btn-ghost btn-mini mini-link">Edit below</a>
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state">No draft posts in the queue.</div>
-                {% endif %}
-            </section>
-
-            <section class="kanban-column">
-                <div class="kanban-column-head">
-                    <div>
-                        <span class="eyebrow">Stage 03</span>
-                        <h3>Ready To Post</h3>
-                    </div>
-                    <span class="kanban-count">{{ approved_posts|length }}</span>
-                </div>
-                {% if approved_posts %}
-                <div class="kanban-stack">
-                    {% for post in approved_posts[:6] %}
-                    <article class="kanban-card">
-                        <div class="mini-meta">
-                            <span>Approved</span>
-                            <span>{{ post.content|length }}/280</span>
-                        </div>
-                        <p>{{ post.content[:180] }}{% if post.content|length > 180 %}...{% endif %}</p>
-                        <div class="mini-source">{{ post.scheduled_time | datetime_human }}</div>
-                        <div class="mini-note">{{ "Branded image ready" if post.media_path else ("Auto card on X share" if post.quote_id else "Text-only unless an image is attached") }}</div>
-                        <div class="mini-actions">
-                            <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}">
-                                <button type="submit" name="action" value="publish-x" class="btn btn-primary btn-mini">Share X</button>
-                            </form>
-                            <a href="#publishing-details" class="btn btn-ghost btn-mini mini-link">Edit below</a>
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state">Nothing approved yet.</div>
-                {% endif %}
-            </section>
-
-            <section class="kanban-column">
-                <div class="kanban-column-head">
-                    <div>
-                        <span class="eyebrow">Stage 04</span>
-                        <h3>Published</h3>
-                    </div>
-                    <span class="kanban-count">{{ posted_posts|length }}</span>
-                </div>
-                {% if posted_posts %}
-                <div class="kanban-stack">
-                    {% for post in posted_posts[:6] %}
-                    <article class="kanban-card">
-                        <div class="mini-meta">
-                            <span>Live</span>
-                            <span>{{ post.content|length }}/280</span>
-                        </div>
-                        <p>{{ post.content[:180] }}{% if post.content|length > 180 %}...{% endif %}</p>
-                        <div class="mini-source">{{ post.posted_time | datetime_human }}</div>
-                        <div class="mini-actions">
-                            {% if post.post_id %}
-                            <a href="https://x.com/{{ profile.handle.lstrip('@') }}/status/{{ post.post_id }}" target="_blank" rel="noreferrer" class="btn btn-secondary btn-mini mini-link">View on X</a>
-                            {% else %}
-                            <span class="mini-note">Posted without saved X id</span>
-                            {% endif %}
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state">No published posts yet.</div>
-                {% endif %}
-            </section>
-        </div>
-    </section>
-
-    <section class="ops-grid">
-        <article class="panel panel-intake">
-            <div class="panel-head">
-                <div>
-                    <span class="eyebrow">Intake</span>
-                    <h3>Import Source Document</h3>
-                </div>
-            </div>
-            <form method="post" action="{{ url_for('extract_quotes') }}" enctype="multipart/form-data" class="stack-form">
-                <label>
-                    <span>PDF, DOCX, or TXT</span>
-                    <input type="file" name="document" accept=".pdf,.docx,.txt" required>
-                </label>
-                <button type="submit" class="btn btn-primary btn-block">Extract Quotes</button>
-            </form>
-        </article>
-
-        <article class="panel panel-generate">
-            <div class="panel-head">
-                <div>
-                    <span class="eyebrow">Queue Builder</span>
-                    <h3>Generate Posts</h3>
-                </div>
-            </div>
-            <form method="post" action="{{ url_for('generate_posts') }}" class="stack-form">
-                <div class="field-row">
-                    <label>
-                        <span>Days</span>
-                        <input type="number" name="days" min="1" max="30" value="7">
-                    </label>
-                    <label>
-                        <span>Posts / day</span>
-                        <input type="number" name="posts_per_day" min="1" max="6" value="1">
-                    </label>
-                </div>
-                <label class="checkline">
-                    <input type="checkbox" name="use_ai" value="true" checked>
-                    <span>Use Anthropic formatting when available</span>
-                </label>
-                <button type="submit" class="btn btn-secondary btn-block">Generate Queue</button>
-            </form>
-        </article>
-
-        <article class="panel panel-library">
-            <div class="panel-head">
+    <section class="simple-layout">
+        <article class="panel source-panel">
+            <div class="panel-head simple-panel-head">
                 <div>
                     <span class="eyebrow">Library</span>
                     <h3>Source Documents</h3>
                 </div>
+                <span class="section-meta">The document list stays because it is the fastest way to see where the quote pool is coming from.</span>
             </div>
+
             {% if documents %}
-            <div class="source-list">
+            <div class="document-stack">
                 {% for source, quote_count in documents %}
-                <div class="source-row">
-                    <span>{{ source | source_label }}</span>
-                    <span>{{ quote_count }} quotes</span>
-                </div>
+                <article class="document-row">
+                    <div class="document-name">{{ source | source_label }}</div>
+                    <div class="document-count">{{ quote_count }} quotes</div>
+                </article>
                 {% endfor %}
             </div>
             {% else %}
-            <div class="empty-state">No documents imported yet.</div>
+            <div class="empty-state">No source documents have been imported yet.</div>
             {% endif %}
         </article>
 
-        <article class="panel integrations-panel">
-            <div class="panel-head">
+        <article class="panel library-panel">
+            <div class="panel-head simple-panel-head">
                 <div>
-                    <span class="eyebrow">Connections</span>
-                    <h3>Integration Status</h3>
+                    <span class="eyebrow">Quotes</span>
+                    <h3>Quote Library</h3>
                 </div>
-                <button type="button" class="btn btn-ghost" id="refresh-integrations">Verify Live</button>
+                <label class="search-field">
+                    <span class="sr-only">Search quote library</span>
+                    <input type="search" id="quote-search" placeholder="Search quotes, sources, or topics">
+                </label>
             </div>
+            <div class="section-meta list-meta">All saved quotes, with readiness and usage history.</div>
 
-            <div class="integration-grid" id="integration-grid">
-                {% for key, item in integration_hints.items() %}
-                <article class="integration-card state-{{ 'ready' if item.configured else 'missing' }}" data-integration-card="{{ key }}">
-                    <div class="integration-head">
-                        <strong>{{ item.label }}</strong>
-                        <span class="status-chip">{{ "Loaded" if item.configured else "Missing" }}</span>
+            {% if quotes %}
+            <div class="library-list" id="quote-library-list">
+                {% for quote in quotes %}
+                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.topic or '') ~ ' ' ~ ('ready' if quote.approved else 'review')) | lower }}">
+                    <div class="library-copy">
+                        <div class="library-badges">
+                            <span class="pill pill-muted">{{ quote.source | source_label }}</span>
+                            <span class="pill pill-muted">{{ quote.topic or "General" }}</span>
+                            <span class="status-badge status-{{ 'ready' if quote.approved else 'review' }}">{{ "Ready" if quote.approved else "Review" }}</span>
+                        </div>
+                        <p class="library-quote">"{{ quote.content }}"</p>
                     </div>
-                    <p>{{ item.detail }}</p>
-                    <div class="integration-live">Not checked yet.</div>
+
+                    <div class="library-metrics">
+                        <div>
+                            <span class="label">Score</span>
+                            <strong>{{ "%.1f"|format(quote.quality_score or 0) }}</strong>
+                        </div>
+                        <div>
+                            <span class="label">Used</span>
+                            <strong>{{ quote.used_count or 0 }}</strong>
+                        </div>
+                        <div>
+                            <span class="label">Last Used</span>
+                            <strong>{{ quote.last_used | datetime_human if quote.last_used else "Never" }}</strong>
+                        </div>
+                    </div>
                 </article>
                 {% endfor %}
             </div>
+            <div class="empty-state no-results" id="quote-no-results">No quotes match this search.</div>
+            {% else %}
+            <div class="empty-state">No quotes are stored yet.</div>
+            {% endif %}
         </article>
-    </section>
 
-    <section class="section-block">
-        <div class="section-head">
-            <div>
-                <span class="eyebrow">Daily Stoic</span>
-                <h2>Stoic Workbench</h2>
+        <article class="panel posted-panel">
+            <div class="panel-head simple-panel-head">
+                <div>
+                    <span class="eyebrow">Posted</span>
+                    <h3>Posted Feed</h3>
+                </div>
+                <label class="search-field">
+                    <span class="sr-only">Search posted feed</span>
+                    <input type="search" id="posted-search" placeholder="Search posted quotes or stoic posts">
+                </label>
             </div>
-            <span class="section-meta">The source is already in the repo as structured JSON, so no extra PDF is required for the hosted board.</span>
-        </div>
+            <div class="section-meta list-meta">Live items only. Quote posts show the source quote; Stoic posts stay visible with a type tag.</div>
 
-        <div class="stoic-layout">
-            <article class="panel stoic-entry-panel">
-                <div class="panel-head">
-                    <div>
-                        <span class="eyebrow">Source Entry</span>
-                        <h3>Today's Stoic Prompt</h3>
-                    </div>
-                    {% if stoic_entry %}
-                    <span class="pill pill-muted">{{ stoic_entry.date }}</span>
-                    {% endif %}
-                </div>
-
-                {% if stoic_entry %}
-                <div class="stoic-entry-copy">
-                    <div class="quote-meta">
-                        <span>{{ stoic_entry.author }}</span>
-                        <span>{{ stoic_entry.source | source_label }}</span>
-                    </div>
-                    <h4>{{ stoic_entry.title }}</h4>
-                    <blockquote>{{ stoic_entry.quote }}</blockquote>
-                    <p>{{ stoic_entry.body[:520] }}{% if stoic_entry.body|length > 520 %}...{% endif %}</p>
-                </div>
-                {% else %}
-                <div class="empty-state">No Stoic entry was found for today.</div>
-                {% endif %}
-            </article>
-
-            <article class="panel stoic-workbench" id="stoic-workbench" data-stoic-ready="{{ 'true' if stoic_entry else 'false' }}">
-                <div class="panel-head">
-                    <div>
-                        <span class="eyebrow">Anthropic</span>
-                        <h3>Generate Trading Angle</h3>
-                    </div>
-                </div>
-
-                <div class="stoic-status" id="stoic-status">
-                    {% if stoic_entry %}
-                    Generate today's Stoic trading interpretation, then queue it as a draft or directly approved post.
-                    {% else %}
-                    Add or fix the Stoic source data before trying to generate content.
-                    {% endif %}
-                </div>
-
-                <div class="stoic-result empty-state" id="stoic-result">
-                    No Stoic angle generated yet.
-                </div>
-
-                <div class="action-row action-wrap">
-                    <button type="button" class="btn btn-primary" id="stoic-generate" {% if not stoic_entry %}disabled{% endif %}>Generate Stoic Angle</button>
-                    <button type="button" class="btn btn-secondary" id="stoic-queue-draft" disabled>Queue Draft</button>
-                    <button type="button" class="btn btn-ghost" id="stoic-queue-approved" disabled>Queue Approved</button>
-                </div>
-            </article>
-        </div>
-    </section>
-
-    <section class="section-block" id="detailed-review">
-        <div class="section-head">
-            <div>
-                <span class="eyebrow">Review</span>
-                <h2>Quotes Ready for Triage</h2>
-            </div>
-            <span class="section-meta">{{ pending_quotes|length }} shown</span>
-        </div>
-
-        <div class="quote-grid">
-            <div class="quote-stack">
-                {% if pending_quotes %}
-                {% for quote in pending_quotes %}
-                <article class="quote-card">
-                    <div class="quote-meta">
-                        <span class="score">{{ "%.1f"|format(quote.quality_score or 0) }}</span>
-                        <span>{{ quote.topic or "General" }}</span>
-                        <span>{{ quote.source | source_label }}</span>
-                    </div>
-                    <p>"{{ quote.content }}"</p>
-                    <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}" class="stack-form">
-                        <label class="checkline">
-                            <input type="checkbox" name="use_ai" value="true" checked>
-                            <span>Use AI formatting for queued posts</span>
-                        </label>
-                        <div class="action-row">
-                            <button type="submit" name="action" value="approve" class="btn btn-ghost">Approve</button>
-                            <button type="submit" name="action" value="queue" class="btn btn-secondary">Queue Draft</button>
-                            <button type="submit" name="action" value="queue-approved" class="btn btn-primary">Queue Approved</button>
-                            <button type="submit" name="action" value="share-x" class="btn btn-secondary">Share X Now</button>
+            {% if posted_feed %}
+            <div class="posted-list" id="posted-feed-list">
+                {% for item in posted_feed %}
+                <article class="posted-row" data-search="{{ item.search_text }}">
+                    <div class="posted-row-head">
+                        <div class="posted-meta-line">
+                            <span class="status-badge status-{{ item.kind }}">{{ item.kind_label }}</span>
+                            <span class="mono-line">{{ item.posted_time | datetime_human }}</span>
                         </div>
-                    </form>
+                        {% if item.url %}
+                        <a href="{{ item.url }}" target="_blank" rel="noreferrer" class="posted-link">View on X</a>
+                        {% endif %}
+                    </div>
+
+                    <p class="posted-title">{{ item.title }}</p>
+                    {% if item.body_text and item.body_text != item.title %}
+                    <p class="posted-body">{{ item.body_text }}</p>
+                    {% endif %}
+
+                    <div class="posted-footer">
+                        <span>{{ item.source_label }}</span>
+                        <span>{{ item.meta_label }}</span>
+                    </div>
                 </article>
                 {% endfor %}
-                {% else %}
-                <div class="empty-state">No quotes are waiting for review.</div>
-                {% endif %}
             </div>
-
-            <aside class="panel slim-panel">
-                <div class="panel-head">
-                    <div>
-                        <span class="eyebrow">Already Approved</span>
-                        <h3>Fast Queue Add</h3>
-                    </div>
-                </div>
-                {% if approved_quotes %}
-                <div class="approved-list">
-                    {% for quote in approved_quotes %}
-                    <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}" class="approved-quote">
-                        <div>
-                            <strong>{{ quote.topic or "General" }}</strong>
-                            <p>{{ quote.content[:120] }}{% if quote.content|length > 120 %}...{% endif %}</p>
-                        </div>
-                        <label class="checkline compact-check">
-                            <input type="checkbox" name="use_ai" value="true" checked>
-                            <span>AI</span>
-                        </label>
-                        <button type="submit" name="action" value="queue" class="btn btn-ghost">Draft</button>
-                        <button type="submit" name="action" value="queue-approved" class="btn btn-secondary">Approved</button>
-                        <button type="submit" name="action" value="share-x" class="btn btn-primary">Share X</button>
-                    </form>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state">Approve a few quotes and they'll show up here.</div>
-                {% endif %}
-            </aside>
-        </div>
-    </section>
-
-    <section class="section-block" id="publishing-details">
-        <div class="section-head">
-            <div>
-                <span class="eyebrow">Publishing</span>
-                <h2>Queue Board</h2>
-            </div>
-            <span class="section-meta">X posting marks a queue item as published. Facebook and Instagram are side-post actions.</span>
-        </div>
-
-        <div class="board">
-            <section class="board-column">
-                <div class="board-head">
-                    <h3>Draft Queue</h3>
-                    <span>{{ pending_posts|length }}</span>
-                </div>
-                {% if pending_posts %}
-                {% for post in pending_posts %}
-                <details class="post-card status-pending">
-                    <summary>
-                        <div>
-                            <strong>Post #{{ post.id }}</strong>
-                            <p>{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</p>
-                        </div>
-                        <div class="post-summary-meta">
-                            <span>{{ post.content|length }}/280</span>
-                            <span>{{ post.scheduled_time | datetime_human }}</span>
-                        </div>
-                    </summary>
-                    <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}" class="stack-form post-form">
-                        <label>
-                            <span>Content</span>
-                            <textarea name="content" rows="6">{{ post.content }}</textarea>
-                        </label>
-                        <div class="field-row">
-                            <label>
-                                <span>Schedule</span>
-                                <input type="datetime-local" name="scheduled_time" value="{{ post.scheduled_time | datetime_input }}">
-                            </label>
-                            <label>
-                                <span>Status</span>
-                                <select name="status">
-                                    <option value="pending" {% if post.status == 'pending' %}selected{% endif %}>Draft</option>
-                                    <option value="approved" {% if post.status == 'approved' %}selected{% endif %}>Approved</option>
-                                    <option value="rejected" {% if post.status == 'rejected' %}selected{% endif %}>Rejected</option>
-                                </select>
-                            </label>
-                        </div>
-                        <label>
-                            <span>Image URL</span>
-                            <input type="url" name="media_path" value="{{ post.media_path or '' }}" placeholder="https://...">
-                        </label>
-                        <div class="mini-note">{{ "Branded image already attached." if post.media_path else ("Leave this blank and the app will generate the quote card on share." if post.quote_id else "Add an image URL if this post needs media.") }}</div>
-                        <div class="action-row action-wrap">
-                            <button type="submit" name="action" value="save" class="btn btn-ghost">Save</button>
-                            <button type="submit" name="action" value="approve" class="btn btn-primary">Approve</button>
-                            <button type="submit" name="action" value="publish-facebook" class="btn btn-secondary">Facebook</button>
-                            <button type="submit" name="action" value="publish-instagram" class="btn btn-secondary" {% if not post.media_path and not post.quote_id %}disabled{% endif %}>Instagram</button>
-                        </div>
-                    </form>
-                </details>
-                {% endfor %}
-                {% else %}
-                <div class="empty-state">No draft posts in the queue.</div>
-                {% endif %}
-            </section>
-
-            <section class="board-column">
-                <div class="board-head">
-                    <h3>Approved to Publish</h3>
-                    <span>{{ approved_posts|length }}</span>
-                </div>
-                {% if approved_posts %}
-                {% for post in approved_posts %}
-                <details class="post-card status-approved">
-                    <summary>
-                        <div>
-                            <strong>Post #{{ post.id }}</strong>
-                            <p>{{ post.content[:140] }}{% if post.content|length > 140 %}...{% endif %}</p>
-                        </div>
-                        <div class="post-summary-meta">
-                            <span>{{ post.content|length }}/280</span>
-                            <span>{{ post.scheduled_time | datetime_human }}</span>
-                        </div>
-                    </summary>
-                    <form method="post" action="{{ url_for('handle_post_action', post_id=post.id) }}" class="stack-form post-form">
-                        <label>
-                            <span>Content</span>
-                            <textarea name="content" rows="6">{{ post.content }}</textarea>
-                        </label>
-                        <div class="field-row">
-                            <label>
-                                <span>Schedule</span>
-                                <input type="datetime-local" name="scheduled_time" value="{{ post.scheduled_time | datetime_input }}">
-                            </label>
-                            <label>
-                                <span>Status</span>
-                                <select name="status">
-                                    <option value="approved" {% if post.status == 'approved' %}selected{% endif %}>Approved</option>
-                                    <option value="pending">Draft</option>
-                                    <option value="rejected">Rejected</option>
-                                </select>
-                            </label>
-                        </div>
-                        <label>
-                            <span>Image URL</span>
-                            <input type="url" name="media_path" value="{{ post.media_path or '' }}" placeholder="https://...">
-                        </label>
-                        <div class="mini-note">{{ "Branded image already attached." if post.media_path else ("Leave this blank and the app will generate the quote card for X on share." if post.quote_id else "Add an image URL if this post needs media.") }}</div>
-                        <div class="action-row action-wrap">
-                            <button type="submit" name="action" value="save" class="btn btn-ghost">Save</button>
-                            <button type="submit" name="action" value="draft" class="btn btn-ghost">Back To Draft</button>
-                            <button type="submit" name="action" value="publish-x" class="btn btn-primary">Share X</button>
-                            <button type="submit" name="action" value="publish-facebook" class="btn btn-secondary">Facebook</button>
-                            <button type="submit" name="action" value="publish-instagram" class="btn btn-secondary" {% if not post.media_path and not post.quote_id %}disabled{% endif %}>Instagram</button>
-                        </div>
-                    </form>
-                </details>
-                {% endfor %}
-                {% else %}
-                <div class="empty-state">Nothing approved yet.</div>
-                {% endif %}
-            </section>
-
-            <section class="board-column">
-                <div class="board-head">
-                    <h3>Recently Published</h3>
-                    <span>{{ posted_posts|length }}</span>
-                </div>
-                {% if posted_posts %}
-                <div class="published-grid">
-                    {% for post in posted_posts %}
-                    <article class="post-card status-posted static-card">
-                        <div class="static-head">
-                            <strong>Post #{{ post.id }}</strong>
-                            <span>{{ post.posted_time | datetime_human }}</span>
-                        </div>
-                        <p>{{ post.content }}</p>
-                        <div class="static-meta">
-                            <span>{{ post.content|length }}/280</span>
-                            {% if post.post_id %}
-                            <a href="https://x.com/{{ profile.handle.lstrip('@') }}/status/{{ post.post_id }}" target="_blank" rel="noreferrer">View on X</a>
-                            {% endif %}
-                        </div>
-                    </article>
-                    {% endfor %}
-                </div>
-                {% else %}
-                <div class="empty-state">No published posts yet.</div>
-                {% endif %}
-            </section>
-        </div>
+            <div class="empty-state no-results" id="posted-no-results">No posted items match this search.</div>
+            {% else %}
+            <div class="empty-state">No posts have been published yet.</div>
+            {% endif %}
+        </article>
     </section>
 </main>
 {% endblock %}

@@ -1,11 +1,27 @@
 import json
 import os
+import re
 from datetime import datetime
 from typing import Optional
 
 import requests
 
 STOIC_DATA_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "data", "daily_stoic.json")
+_WHITESPACE_RE = re.compile(r"\s+")
+
+STOIC_FIELD_LIMITS = {
+    "point1_title": {"max_words": 4, "max_chars": 42},
+    "point1_meaning": {"max_words": 10, "max_chars": 72},
+    "point1_trading": {"max_words": 12, "max_chars": 96},
+    "point2_title": {"max_words": 4, "max_chars": 42},
+    "point2_meaning": {"max_words": 10, "max_chars": 72},
+    "point2_trading": {"max_words": 12, "max_chars": 96},
+    "point3_title": {"max_words": 4, "max_chars": 42},
+    "point3_meaning": {"max_words": 10, "max_chars": 72},
+    "point3_trading": {"max_words": 12, "max_chars": 96},
+    "closing_wisdom": {"max_words": 20, "max_chars": 140},
+    "key_takeaway": {"max_words": 10, "max_chars": 72},
+}
 
 
 def load_stoic_entries() -> list[dict]:
@@ -27,6 +43,47 @@ def get_stoic_entry_for_date(target_date: Optional[datetime] = None) -> Optional
 
 def get_stoic_entry_for_today() -> Optional[dict]:
     return get_stoic_entry_for_date()
+
+
+def clean_stoic_text(value: str | None) -> str:
+    return _WHITESPACE_RE.sub(" ", (value or "")).strip()
+
+
+def truncate_stoic_text(value: str, *, max_words: int | None = None, max_chars: int | None = None) -> str:
+    cleaned = clean_stoic_text(value)
+    if not cleaned:
+        return ""
+
+    if max_words is not None:
+        words = cleaned.split()
+        if len(words) > max_words:
+            cleaned = " ".join(words[:max_words]).rstrip(" ,;:-")
+
+    if max_chars is not None and len(cleaned) > max_chars:
+        cleaned = cleaned[: max_chars - 3].rstrip(" ,;:-")
+        cleaned = f"{cleaned}..."
+
+    return cleaned
+
+
+def normalize_stoic_content(payload: dict) -> dict:
+    normalized = {
+        key: clean_stoic_text(value) if isinstance(value, str) else value
+        for key, value in payload.items()
+    }
+
+    for key, limits in STOIC_FIELD_LIMITS.items():
+        normalized[key] = truncate_stoic_text(
+            normalized.get(key, ""),
+            max_words=limits.get("max_words"),
+            max_chars=limits.get("max_chars"),
+        )
+
+    tweet = clean_stoic_text(normalized.get("tweet", ""))
+    if len(tweet) > 250:
+        tweet = f"{tweet[:247].rstrip()}..."
+    normalized["tweet"] = tweet
+    return normalized
 
 
 def generate_stoic_trading_content(entry: dict, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514") -> dict:
@@ -96,10 +153,10 @@ Respond in JSON format only:
     )
 
     try:
-        return json.loads(content)
+        return normalize_stoic_content(json.loads(content))
     except json.JSONDecodeError:
         start = content.find("{")
         end = content.rfind("}") + 1
         if start != -1 and end > start:
-            return json.loads(content[start:end])
+            return normalize_stoic_content(json.loads(content[start:end]))
         raise ValueError("Could not parse JSON from Anthropic response")

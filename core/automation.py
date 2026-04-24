@@ -4,7 +4,7 @@ import json
 import os
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import or_
@@ -12,6 +12,7 @@ from sqlalchemy import or_
 from .models import AutomationRun, Post, PostStatus, Quote, get_session, init_db
 from . import brand_media, stoic_service
 from .post_planner import build_quote_post_text
+from .quote_dedupe import normalize_quote_for_matching
 from integrations.cloudinary_client import CloudinaryClient
 from integrations.facebook_client import FacebookClient
 from integrations.instagram_client import InstagramClient
@@ -20,6 +21,7 @@ from integrations.twitter_client import TwitterClient
 UTC = timezone.utc
 DEFAULT_STOIC_TASK_KEY = "daily_stoic"
 DEFAULT_QUOTE_TASK_KEY = "daily_quote"
+DEFAULT_QUOTE_RECYCLE_DAYS = 90
 
 
 @dataclass
@@ -155,6 +157,75 @@ def compose_publish_message(primary_label: str, side_results: dict) -> str:
     return ", ".join(summary)
 
 
+def get_quote_recycle_days() -> int:
+    raw_value = os.getenv("QUOTE_RECYCLE_DAYS", str(DEFAULT_QUOTE_RECYCLE_DAYS)).strip()
+    try:
+        return max(0, int(raw_value))
+    except ValueError:
+        return DEFAULT_QUOTE_RECYCLE_DAYS
+
+
+def load_render_payload(post: Post) -> dict:
+    if not post.render_payload:
+        return {}
+    try:
+        payload = json.loads(post.render_payload)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def resolve_post_quote_text(post: Post, quote_lookup: dict[int, str]) -> str:
+    if post.quote_id and post.quote_id in quote_lookup:
+        return (quote_lookup.get(post.quote_id) or "").strip()
+
+    payload = load_render_payload(post)
+    for key in ("quote_text", "source_text", "quote"):
+        value = (payload.get(key) or "").strip()
+        if value:
+            return value
+
+    return (post.content or "").strip()
+
+
+def get_recent_quote_signatures(db_session, *, recycle_days: int) -> set[str]:
+    query = db_session.query(Post).filter(
+        Post.platform == "twitter",
+        or_(Post.quote_id.isnot(None), Post.render_kind == "quote"),
+    )
+
+    active_statuses = [PostStatus.PENDING.value, PostStatus.APPROVED.value]
+    if recycle_days > 0:
+        cutoff = datetime.now(UTC) - timedelta(days=recycle_days)
+        query = query.filter(
+            or_(
+                Post.status.in_(active_statuses),
+                Post.posted_time >= cutoff,
+            )
+        )
+    else:
+        query = query.filter(Post.status.in_(active_statuses))
+
+    posts = query.all()
+    if not posts:
+        return set()
+
+    quote_ids = {post.quote_id for post in posts if post.quote_id}
+    quote_lookup = {}
+    if quote_ids:
+        quote_lookup = {
+            quote.id: quote.content or ""
+            for quote in db_session.query(Quote).filter(Quote.id.in_(quote_ids)).all()
+        }
+
+    signatures: set[str] = set()
+    for post in posts:
+        signature = normalize_quote_for_matching(resolve_post_quote_text(post, quote_lookup))
+        if signature:
+            signatures.add(signature)
+    return signatures
+
+
 def get_next_approved_quote(db_session) -> Quote | None:
     active_quote_ids = (
         db_session.query(Post.quote_id)
@@ -164,24 +235,37 @@ def get_next_approved_quote(db_session) -> Quote | None:
         )
     )
 
-    quote = (
+    candidates = (
         db_session.query(Quote)
         .filter(
             Quote.approved.is_(True),
-            ~Quote.id.in_(active_quote_ids),
         )
         .order_by(Quote.used_count.asc(), Quote.quality_score.desc(), Quote.created_at.asc())
-        .first()
+        .all()
     )
-    if quote is not None:
-        return quote
+    if not candidates:
+        return None
 
-    return (
-        db_session.query(Quote)
-        .filter(Quote.approved.is_(True))
-        .order_by(Quote.used_count.asc(), Quote.quality_score.desc(), Quote.created_at.asc())
-        .first()
+    active_ids = {quote_id for (quote_id,) in active_quote_ids if quote_id is not None}
+    recent_signatures = get_recent_quote_signatures(
+        db_session,
+        recycle_days=get_quote_recycle_days(),
     )
+
+    fallback_quote = None
+    for quote in candidates:
+        if quote.id in active_ids:
+            continue
+
+        fallback_quote = fallback_quote or quote
+        signature = normalize_quote_for_matching(quote.content)
+        if signature and signature not in recent_signatures:
+            return quote
+
+    if fallback_quote is not None:
+        return fallback_quote
+
+    return candidates[0]
 
 
 def create_approved_quote_post(db_session) -> Post | None:

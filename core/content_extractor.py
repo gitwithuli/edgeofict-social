@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 
 from .document_parser import parse_document, get_document_name
 from .models import Quote, get_session, init_db
+from .quote_dedupe import normalize_quote_for_matching
 
 EXTRACTION_PROMPT = """You are an expert at extracting impactful trading quotes from ICT (Inner Circle Trader) methodology content.
 
@@ -120,18 +121,21 @@ class ContentExtractor:
             init_db()
             session = get_session()
 
+        existing_signatures = {
+            signature
+            for (content,) in session.query(Quote.content).all()
+            if (signature := normalize_quote_for_matching(content))
+        }
         saved_count = 0
         saved_quote_ids: list[int] = []
         for quote_data in quotes:
-            existing = session.query(Quote).filter(
-                Quote.content == quote_data["content"]
-            ).first()
-
-            if existing:
+            content = " ".join((quote_data.get("content") or "").split()).strip()
+            signature = normalize_quote_for_matching(content)
+            if not signature or signature in existing_signatures:
                 continue
 
             quote = Quote(
-                content=quote_data["content"],
+                content=content,
                 source=quote_data.get("source", "Unknown"),
                 topic=quote_data.get("topic", "General"),
                 quality_score=quote_data.get("quality_score", 5.0),
@@ -142,6 +146,7 @@ class ContentExtractor:
             session.flush()
             saved_count += 1
             saved_quote_ids.append(quote.id)
+            existing_signatures.add(signature)
 
         session.commit()
         if return_quote_ids:

@@ -180,6 +180,7 @@ def create_app(test_config=None):
         SESSION_COOKIE_SECURE=parse_bool(os.getenv("SESSION_COOKIE_SECURE"), default=os.getenv("FLASK_ENV") == "production"),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE="Lax",
+        SESSION_REFRESH_EACH_REQUEST=False,
         MAX_CONTENT_LENGTH=50 * 1024 * 1024,
         APP_TITLE="EdgeOfICT Social Control",
     )
@@ -263,8 +264,29 @@ def create_app(test_config=None):
         except Exception:
             return None
 
+    def load_render_payload(post: Post) -> dict:
+        if not post.render_payload:
+            return {}
+        try:
+            payload = json.loads(post.render_payload)
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    def resolve_quote_source_text(post: Post, quote: Quote | None = None) -> str:
+        if quote is not None and quote.content:
+            return quote.content.strip()
+
+        payload = load_render_payload(post)
+        for key in ("quote_text", "source_text", "quote"):
+            value = (payload.get(key) or "").strip()
+            if value:
+                return value
+
+        return (post.content or "").strip()
+
     def ensure_quote_media(post: Post, quote: Quote | None = None) -> bytes | None:
-        source_text = (quote.content if quote else "") or post.content or ""
+        source_text = resolve_quote_source_text(post, quote)
         if not source_text:
             return None
 
@@ -298,9 +320,8 @@ def create_app(test_config=None):
         if post.render_kind != "stoic" or not post.render_payload:
             return None
 
-        try:
-            payload = json.loads(post.render_payload)
-        except json.JSONDecodeError:
+        payload = load_render_payload(post)
+        if not payload:
             return None
 
         image_bytes = brand_media.render_stoic_card(payload)
@@ -326,7 +347,7 @@ def create_app(test_config=None):
                 image_bytes = render_stoic_media_from_post(post)
             elif quote is None and post.quote_id:
                 quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
-            if image_bytes is None and quote is not None:
+            if image_bytes is None and (quote is not None or post.render_kind == "quote"):
                 image_bytes = ensure_quote_media(post, quote)
 
         try:
@@ -360,8 +381,9 @@ def create_app(test_config=None):
 
         if not post.media_path and post.quote_id:
             quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
-            if quote is not None:
-                ensure_quote_media(post, quote)
+            ensure_quote_media(post, quote)
+        elif not post.media_path and post.render_kind == "quote":
+            ensure_quote_media(post)
 
         return post.media_path
 
@@ -413,80 +435,96 @@ def create_app(test_config=None):
         except Exception:
             return None
 
+    def build_dashboard_posted_item(post: Post, quotes_by_id: dict[int, Quote]) -> dict:
+        payload = load_render_payload(post)
+        quote = quotes_by_id.get(post.quote_id) if post.quote_id else None
+        post_kind = "stoic" if post.render_kind == "stoic" else "quote"
+
+        if post_kind == "stoic":
+            title = (payload.get("title") or "Stoic Post").strip()
+            body_text = (
+                payload.get("key_takeaway")
+                or payload.get("closing_wisdom")
+                or post.content
+            )
+            source_label = "Stoic"
+            meta_label = (payload.get("author") or "Daily Stoic").strip()
+            search_text = " ".join(
+                filter(
+                    None,
+                    [
+                        title,
+                        body_text,
+                        meta_label,
+                        payload.get("date", ""),
+                    ],
+                )
+            )
+        else:
+            title = resolve_quote_source_text(post, quote) or post.content or "Quote post"
+            body_text = post.content or title
+            source_label = display_source_label(quote.source if quote else payload.get("source"))
+            meta_label = quote.topic if quote and quote.topic else "Quote"
+            search_text = " ".join(filter(None, [title, body_text, source_label, meta_label]))
+
+        return {
+            "id": post.id,
+            "kind": post_kind,
+            "kind_label": "Stoic" if post_kind == "stoic" else "Quote",
+            "title": title.strip(),
+            "body_text": body_text.strip(),
+            "source_label": source_label,
+            "meta_label": meta_label,
+            "posted_time": post.posted_time,
+            "url": f"https://x.com/{PROFILE_CONFIG['handle'].lstrip('@')}/status/{post.post_id}" if post.post_id else None,
+            "search_text": search_text.lower(),
+        }
+
     def collect_dashboard_state():
         with db_session_scope() as db_session:
-            pending_quotes = (
+            quotes = (
                 db_session.query(Quote)
-                .filter(Quote.approved.is_(False))
-                .order_by(Quote.quality_score.desc(), Quote.created_at.desc())
-                .limit(14)
-                .all()
-            )
-            approved_quotes = (
-                db_session.query(Quote)
-                .filter(Quote.approved.is_(True))
-                .order_by(Quote.quality_score.desc(), Quote.created_at.desc())
-                .limit(10)
-                .all()
-            )
-            pending_posts = (
-                db_session.query(Post)
-                .filter(Post.status == PostStatus.PENDING.value)
-                .order_by(Post.scheduled_time.is_(None), Post.scheduled_time.asc(), Post.created_at.desc())
-                .limit(18)
-                .all()
-            )
-            approved_posts = (
-                db_session.query(Post)
-                .filter(Post.status == PostStatus.APPROVED.value)
-                .order_by(Post.scheduled_time.is_(None), Post.scheduled_time.asc(), Post.created_at.desc())
+                .order_by(
+                    Quote.approved.desc(),
+                    Quote.used_count.asc(),
+                    Quote.quality_score.desc(),
+                    Quote.created_at.desc(),
+                )
                 .all()
             )
             posted_posts = (
                 db_session.query(Post)
                 .filter(Post.status == PostStatus.POSTED.value)
                 .order_by(Post.posted_time.desc(), Post.created_at.desc())
-                .limit(12)
+                .limit(150)
                 .all()
             )
             documents = (
                 db_session.query(Quote.source, func.count(Quote.id).label("quote_count"))
                 .group_by(Quote.source)
                 .order_by(func.count(Quote.id).desc(), Quote.source.asc())
-                .limit(8)
                 .all()
             )
             stats = {
                 "quotes_total": db_session.query(Quote).count(),
                 "quotes_pending": db_session.query(Quote).filter(Quote.approved.is_(False)).count(),
                 "quotes_approved": db_session.query(Quote).filter(Quote.approved.is_(True)).count(),
-                "posts_pending": db_session.query(Post).filter(Post.status == PostStatus.PENDING.value).count(),
-                "posts_approved": db_session.query(Post).filter(Post.status == PostStatus.APPROVED.value).count(),
                 "posts_posted": db_session.query(Post).filter(Post.status == PostStatus.POSTED.value).count(),
+                "sources_total": db_session.query(func.count(func.distinct(Quote.source))).scalar() or 0,
             }
-            next_scheduled = (
-                db_session.query(Post)
-                .filter(Post.status.in_([PostStatus.PENDING.value, PostStatus.APPROVED.value]), Post.scheduled_time.isnot(None))
-                .order_by(Post.scheduled_time.asc())
-                .first()
-            )
+            quotes_by_id = {quote.id: quote for quote in quotes}
+            posted_feed = [build_dashboard_posted_item(post, quotes_by_id) for post in posted_posts]
 
         db_url = app.config["DATABASE_URL"]
-        stoic_entry = get_dashboard_stoic_entry()
         return {
-            "pending_quotes": pending_quotes,
-            "approved_quotes": approved_quotes,
-            "pending_posts": pending_posts,
-            "approved_posts": approved_posts,
+            "quotes": quotes,
             "posted_posts": posted_posts,
+            "posted_feed": posted_feed,
             "documents": documents,
             "stats": stats,
             "profile": app.config["PROFILE"],
-            "integration_hints": app.config["INTEGRATION_HINTS"],
-            "next_scheduled": next_scheduled,
             "database_label": "PostgreSQL" if db_url.startswith("postgresql://") else "SQLite",
             "auth_enabled": not app.config["DISABLE_AUTH"],
-            "stoic_entry": stoic_entry,
         }
 
     @app.template_filter("datetime_input")
@@ -641,6 +679,42 @@ def create_app(test_config=None):
                 flash("No approved quotes were available to generate posts from.", "warning")
         except Exception as exc:
             flash(f"Post generation failed: {exc}", "error")
+
+        return redirect(url_for("dashboard"))
+
+    @app.post("/actions/manual-quote-card")
+    @login_required
+    def create_manual_quote_card():
+        quote_text = request.form.get("quote_text", "").strip()
+        post_text = request.form.get("post_text", "").strip() or quote_text
+        status = request.form.get("status", PostStatus.PENDING.value)
+
+        if not quote_text:
+            flash("Add quote text to create a manual quote card.", "error")
+            return redirect(url_for("dashboard"))
+
+        if status not in {PostStatus.PENDING.value, PostStatus.APPROVED.value}:
+            flash("Manual quote card status must be draft or approved.", "error")
+            return redirect(url_for("dashboard"))
+
+        try:
+            with db_session_scope() as db_session:
+                post = Post(
+                    platform="twitter",
+                    content=post_text,
+                    render_kind="quote",
+                    render_payload=json.dumps({"quote_text": quote_text}),
+                    status=status,
+                    created_at=datetime.now(UTC),
+                )
+                if status == PostStatus.APPROVED.value:
+                    post.approved_at = datetime.now(UTC)
+                db_session.add(post)
+                db_session.flush()
+                ensure_quote_media(post)
+                flash(f"Queued manual quote card as post #{post.id}.", "success")
+        except Exception as exc:
+            flash(f"Manual quote card creation failed: {exc}", "error")
 
         return redirect(url_for("dashboard"))
 
@@ -879,4 +953,10 @@ app = create_app()
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=int(os.getenv("PORT", "5001")))
+    debug_enabled = parse_bool(os.getenv("FLASK_DEBUG"), default=False)
+    app.run(
+        host=os.getenv("HOST", "127.0.0.1"),
+        port=int(os.getenv("PORT", "5001")),
+        debug=debug_enabled,
+        use_reloader=debug_enabled,
+    )

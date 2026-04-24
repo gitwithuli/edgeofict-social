@@ -271,6 +271,45 @@ def test_run_daily_quote_publish_creates_post_from_approved_quote_when_queue_emp
     session.close()
 
 
+def test_get_next_approved_quote_skips_recent_matching_content(automation_db, monkeypatch):
+    monkeypatch.setenv("QUOTE_RECYCLE_DAYS", "180")
+
+    session = get_session()
+    repeated_quote = Quote(
+        content="Wait for the clean draw, not the noisy candle.",
+        source="The Sands of Time",
+        topic="Patience",
+        quality_score=9.7,
+        approved=True,
+    )
+    fresh_quote = Quote(
+        content="Preserve capital while the story is unclear.",
+        source="The Sands of Time",
+        topic="Risk Management",
+        quality_score=8.6,
+        approved=True,
+    )
+    session.add_all([repeated_quote, fresh_quote])
+    session.commit()
+
+    session.add(
+        Post(
+            quote_id=repeated_quote.id,
+            platform="twitter",
+            content='"Wait for the clean draw, not the noisy candle."\n\nTrack your edge.\n\n#ICT #SMC #NQ #ES #Trading',
+            status=PostStatus.POSTED.value,
+            posted_time=datetime.now(timezone.utc),
+        )
+    )
+    session.commit()
+
+    selected = automation.get_next_approved_quote(session)
+
+    assert selected is not None
+    assert selected.id == fresh_quote.id
+    session.close()
+
+
 def test_run_daily_quote_publish_skips_duplicate_run(automation_db, monkeypatch):
     session = get_session()
     quote = Quote(
