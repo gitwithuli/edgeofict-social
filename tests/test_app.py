@@ -127,6 +127,39 @@ def test_dashboard_shows_quote_extraction_form_after_login(app_client):
     assert b"/actions/extract-quotes" in response.data
 
 
+def test_bulk_approve_pending_quotes(app_client):
+    client, app = app_client
+
+    session = get_session(app.config["DB_ENGINE"])
+    session.add(
+        Quote(
+            content="The patient setup pays the cleanest dividend.",
+            source="second-doc",
+            topic="Patience",
+            quality_score=8.4,
+            approved=False,
+        )
+    )
+    session.commit()
+    session.close()
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        "/actions/quotes/approve-all",
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Approved 2 quotes." in response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    approved_quotes = session.query(Quote).filter(Quote.approved.is_(True)).count()
+    pending_quotes = session.query(Quote).filter(Quote.approved.is_(False)).count()
+    assert approved_quotes == 2
+    assert pending_quotes == 0
+    session.close()
+
+
 def test_extract_quotes_uses_original_upload_name(app_client, monkeypatch):
     client, _ = app_client
     captured = {}

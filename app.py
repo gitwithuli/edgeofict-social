@@ -682,6 +682,30 @@ def create_app(test_config=None):
 
         return redirect(url_for("dashboard"))
 
+    @app.post("/actions/quotes/approve-all")
+    @login_required
+    def approve_all_quotes():
+        try:
+            with db_session_scope() as db_session:
+                pending_quotes = (
+                    db_session.query(Quote)
+                    .filter(Quote.approved.is_(False))
+                    .all()
+                )
+
+                if not pending_quotes:
+                    flash("No quotes are waiting for review.", "warning")
+                    return redirect(url_for("dashboard"))
+
+                for quote in pending_quotes:
+                    quote.approved = True
+
+                flash(f"Approved {len(pending_quotes)} quotes.", "success")
+        except Exception as exc:
+            flash(f"Bulk quote approval failed: {exc}", "error")
+
+        return redirect(url_for("dashboard"))
+
     @app.post("/actions/manual-quote-card")
     @login_required
     def create_manual_quote_card():

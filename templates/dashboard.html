@@ -46,6 +46,11 @@
             <span class="label">Waiting Review</span>
             <strong>{{ stats.quotes_pending }}</strong>
             <span class="overview-sub">Still stored, not yet available to post</span>
+            {% if stats.quotes_pending %}
+            <form method="post" action="{{ url_for('approve_all_quotes') }}">
+                <button type="submit" class="btn btn-secondary btn-block">Approve All Pending</button>
+            </form>
+            {% endif %}
         </article>
 
         <article class="panel overview-card">
