@@ -111,6 +111,22 @@ def test_dashboard_uses_source_label_override(app_client):
     assert b"The Sands of Time" in response.data
 
 
+def test_dashboard_shows_quote_extraction_form_after_login(app_client):
+    client, _ = app_client
+
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": "secret"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Import Source Document" in response.data
+    assert b"Extract Quotes" in response.data
+    assert b'name="document"' in response.data
+    assert b"/actions/extract-quotes" in response.data
+
+
 def test_extract_quotes_uses_original_upload_name(app_client, monkeypatch):
     client, _ = app_client
     captured = {}

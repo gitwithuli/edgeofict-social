@@ -65,6 +65,22 @@
         <article class="panel source-panel">
             <div class="panel-head simple-panel-head">
                 <div>
+                    <span class="eyebrow">Intake</span>
+                    <h3>Import Source Document</h3>
+                </div>
+                <span class="section-meta">Upload a fresh PDF, DOCX, or TXT note to extract new quotes into the library.</span>
+            </div>
+
+            <form method="post" action="{{ url_for('extract_quotes') }}" enctype="multipart/form-data" class="stack-form">
+                <label>
+                    <span>PDF, DOCX, or TXT</span>
+                    <input type="file" name="document" accept=".pdf,.docx,.txt" required>
+                </label>
+                <button type="submit" class="btn btn-primary btn-block">Extract Quotes</button>
+            </form>
+
+            <div class="panel-head simple-panel-head">
+                <div>
                     <span class="eyebrow">Library</span>
                     <h3>Source Documents</h3>
                 </div>
