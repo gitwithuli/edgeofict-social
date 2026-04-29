@@ -2,6 +2,7 @@ import os
 import tempfile
 import io
 import json
+from datetime import datetime, timezone
 
 import pytest
 
@@ -125,6 +126,38 @@ def test_dashboard_shows_quote_extraction_form_after_login(app_client):
     assert b"Extract Quotes" in response.data
     assert b'name="document"' in response.data
     assert b"/actions/extract-quotes" in response.data
+
+
+def test_dashboard_available_pool_excludes_used_quotes(app_client):
+    client, app = app_client
+
+    session = get_session(app.config["DB_ENGINE"])
+    fresh_quote = session.query(Quote).filter(Quote.id == 1).first()
+    fresh_quote.approved = True
+    used_quote = Quote(
+        content="Already consumed quote.",
+        source="archive-doc",
+        topic="Execution",
+        quality_score=8.9,
+        approved=True,
+        used_count=1,
+        last_used=datetime.now(timezone.utc),
+    )
+    session.add(used_quote)
+    session.commit()
+    session.close()
+
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": "secret"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"1 ready for auto-posting" in response.data
+    assert b"Available Quote Pool" in response.data
+    assert b"Used Quote Archive" in response.data
+    assert b"Archived" in response.data
 
 
 def test_bulk_approve_pending_quotes(app_client):

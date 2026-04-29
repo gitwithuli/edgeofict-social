@@ -39,7 +39,7 @@
         <article class="panel overview-card">
             <span class="label">Quotes In Library</span>
             <strong>{{ stats.quotes_total }}</strong>
-            <span class="overview-sub">{{ stats.quotes_approved }} ready for auto-posting</span>
+            <span class="overview-sub">{{ stats.quotes_available }} ready for auto-posting</span>
         </article>
 
         <article class="panel overview-card">
@@ -110,24 +110,24 @@
             <div class="panel-head simple-panel-head">
                 <div>
                     <span class="eyebrow">Quotes</span>
-                    <h3>Quote Library</h3>
+                    <h3>Available Quote Pool</h3>
                 </div>
                 <label class="search-field">
-                    <span class="sr-only">Search quote library</span>
-                    <input type="search" id="quote-search" placeholder="Search quotes, sources, or topics">
+                    <span class="sr-only">Search available quote pool</span>
+                    <input type="search" id="quote-search" placeholder="Search available quotes, sources, or topics">
                 </label>
             </div>
-            <div class="section-meta list-meta">All saved quotes, with readiness and usage history.</div>
+            <div class="section-meta list-meta">Only approved quotes that have not been turned into a post yet. Used quotes move to the archive below.</div>
 
-            {% if quotes %}
+            {% if available_quotes %}
             <div class="library-list" id="quote-library-list">
-                {% for quote in quotes %}
-                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.topic or '') ~ ' ' ~ ('ready' if quote.approved else 'review')) | lower }}">
+                {% for quote in available_quotes %}
+                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.topic or '') ~ ' ready available') | lower }}">
                     <div class="library-copy">
                         <div class="library-badges">
                             <span class="pill pill-muted">{{ quote.source | source_label }}</span>
                             <span class="pill pill-muted">{{ quote.topic or "General" }}</span>
-                            <span class="status-badge status-{{ 'ready' if quote.approved else 'review' }}">{{ "Ready" if quote.approved else "Review" }}</span>
+                            <span class="status-badge status-ready">Ready</span>
                         </div>
                         <p class="library-quote">"{{ quote.content }}"</p>
                     </div>
@@ -151,7 +151,7 @@
             </div>
             <div class="empty-state no-results" id="quote-no-results">No quotes match this search.</div>
             {% else %}
-            <div class="empty-state">No quotes are stored yet.</div>
+            <div class="empty-state">No unused approved quotes are available right now.</div>
             {% endif %}
         </article>
 
@@ -197,6 +197,50 @@
             <div class="empty-state no-results" id="posted-no-results">No posted items match this search.</div>
             {% else %}
             <div class="empty-state">No posts have been published yet.</div>
+            {% endif %}
+        </article>
+
+        <article class="panel archive-panel">
+            <div class="panel-head simple-panel-head">
+                <div>
+                    <span class="eyebrow">Archive</span>
+                    <h3>Used Quote Archive</h3>
+                </div>
+                <span class="section-meta">Quotes leave the active pool once a post has been generated from them. The autoposter keeps them out of rotation until the pool needs recycling.</span>
+            </div>
+
+            {% if used_quotes %}
+            <div class="library-list">
+                {% for quote in used_quotes %}
+                <article class="library-row">
+                    <div class="library-copy">
+                        <div class="library-badges">
+                            <span class="pill pill-muted">{{ quote.source | source_label }}</span>
+                            <span class="pill pill-muted">{{ quote.topic or "General" }}</span>
+                            <span class="status-badge status-used">Archived</span>
+                        </div>
+                        <p class="library-quote">"{{ quote.content }}"</p>
+                    </div>
+
+                    <div class="library-metrics">
+                        <div>
+                            <span class="label">Used</span>
+                            <strong>{{ quote.used_count or 0 }}</strong>
+                        </div>
+                        <div>
+                            <span class="label">Last Used</span>
+                            <strong>{{ quote.last_used | datetime_human if quote.last_used else "Never" }}</strong>
+                        </div>
+                        <div>
+                            <span class="label">State</span>
+                            <strong>Out of Pool</strong>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+            {% else %}
+            <div class="empty-state">No quotes have been consumed into posts yet.</div>
             {% endif %}
         </article>
     </section>

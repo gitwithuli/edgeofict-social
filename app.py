@@ -492,6 +492,14 @@ def create_app(test_config=None):
                 )
                 .all()
             )
+            available_quotes = [
+                quote for quote in quotes
+                if quote.approved and (quote.used_count or 0) == 0
+            ]
+            used_quotes = [
+                quote for quote in quotes
+                if quote.approved and (quote.used_count or 0) > 0
+            ]
             posted_posts = (
                 db_session.query(Post)
                 .filter(Post.status == PostStatus.POSTED.value)
@@ -509,6 +517,8 @@ def create_app(test_config=None):
                 "quotes_total": db_session.query(Quote).count(),
                 "quotes_pending": db_session.query(Quote).filter(Quote.approved.is_(False)).count(),
                 "quotes_approved": db_session.query(Quote).filter(Quote.approved.is_(True)).count(),
+                "quotes_available": len(available_quotes),
+                "quotes_used": len(used_quotes),
                 "posts_posted": db_session.query(Post).filter(Post.status == PostStatus.POSTED.value).count(),
                 "sources_total": db_session.query(func.count(func.distinct(Quote.source))).scalar() or 0,
             }
@@ -518,6 +528,8 @@ def create_app(test_config=None):
         db_url = app.config["DATABASE_URL"]
         return {
             "quotes": quotes,
+            "available_quotes": available_quotes,
+            "used_quotes": used_quotes,
             "posted_posts": posted_posts,
             "posted_feed": posted_feed,
             "documents": documents,

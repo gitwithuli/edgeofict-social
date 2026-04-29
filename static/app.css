@@ -1101,6 +1101,10 @@ select:focus {
     min-height: 38rem;
 }
 
+.archive-panel {
+    grid-column: 1 / -1;
+}
+
 .library-list,
 .posted-list {
     max-height: 72vh;
@@ -1193,6 +1197,12 @@ select:focus {
     border-color: rgba(240, 181, 98, 0.28);
     background: rgba(240, 181, 98, 0.1);
     color: var(--amber);
+}
+
+.status-used {
+    border-color: rgba(185, 177, 255, 0.28);
+    background: rgba(185, 177, 255, 0.1);
+    color: #c8c0ff;
 }
 
 .status-quote {
