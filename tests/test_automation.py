@@ -166,6 +166,115 @@ def test_run_daily_stoic_publish_force_bypasses_hour_gate(automation_db, monkeyp
     assert result.post_id is not None
 
 
+def test_build_stoic_image_assets_slugifies_cloudinary_public_id(monkeypatch):
+    captured = {}
+    monkeypatch.setattr(automation.brand_media, "render_stoic_card", lambda payload: b"stoic-card")
+
+    class RecordingCloudinaryClient:
+        def is_configured(self):
+            return True
+
+        def upload_bytes(self, image_bytes, *, folder, public_id):
+            captured["image_bytes"] = image_bytes
+            captured["folder"] = folder
+            captured["public_id"] = public_id
+            return {"secure_url": "https://images.example/stoic-card.png"}
+
+    monkeypatch.setattr(automation, "CloudinaryClient", RecordingCloudinaryClient)
+
+    image_bytes, image_url = automation.build_stoic_image_assets(
+        {"title": "Working Hard Or Hardly Working?", "author": "Epictetus"},
+        {"tweet": "Automatic Stoic post"},
+    )
+
+    assert image_bytes == b"stoic-card"
+    assert image_url == "https://images.example/stoic-card.png"
+    assert captured["folder"] == "edgeofict/stoic"
+    assert captured["public_id"].endswith("-working-hard-or-hardly-working")
+
+
+def test_run_daily_stoic_publish_keeps_x_media_when_cloudinary_upload_fails(automation_db, monkeypatch):
+    monkeypatch.setattr(
+        automation.stoic_service,
+        "get_stoic_entry_for_date",
+        lambda now: {"title": "Control", "author": "Epictetus", "quote": "Q", "body": "B"},
+    )
+    monkeypatch.setattr(
+        automation.stoic_service,
+        "generate_stoic_trading_content",
+        lambda entry: {"tweet": "Automatic Stoic post"},
+    )
+    monkeypatch.setattr(automation.brand_media, "render_stoic_card", lambda payload: b"stoic-card")
+
+    class FailingCloudinaryClient:
+        def is_configured(self):
+            return True
+
+        def upload_bytes(self, *args, **kwargs):
+            raise RuntimeError("temporary upload outage")
+
+    class FakeTwitterClient:
+        def __init__(self, dry_run=False):
+            self.dry_run = dry_run
+
+        def is_configured(self):
+            return True
+
+        def post_by_id(self, post_id, confirm=False, **kwargs):
+            assert kwargs.get("image_bytes") == b"stoic-card"
+            assert kwargs.get("require_media") is True
+            session = get_session()
+            post = session.query(Post).filter(Post.id == post_id).first()
+            post.status = PostStatus.POSTED.value
+            post.posted_time = datetime.now(timezone.utc)
+            post.post_id = "cloudinary-outage"
+            session.commit()
+            session.close()
+            return {"status": "posted", "url": "https://x.com/test/status/cloudinary-outage"}
+
+    monkeypatch.setattr(automation, "CloudinaryClient", FailingCloudinaryClient)
+    monkeypatch.setattr(automation, "TwitterClient", FakeTwitterClient)
+
+    result = automation.run_daily_stoic_publish(run_hour=datetime.now(timezone.utc).hour)
+
+    assert result.status == "posted"
+
+
+def test_run_daily_stoic_publish_does_not_post_without_rendered_media(automation_db, monkeypatch):
+    monkeypatch.setattr(
+        automation.stoic_service,
+        "get_stoic_entry_for_date",
+        lambda now: {"title": "Control", "author": "Epictetus", "quote": "Q", "body": "B"},
+    )
+    monkeypatch.setattr(
+        automation.stoic_service,
+        "generate_stoic_trading_content",
+        lambda entry: {"tweet": "Automatic Stoic post"},
+    )
+    monkeypatch.setattr(
+        automation.brand_media,
+        "render_stoic_card",
+        lambda payload: (_ for _ in ()).throw(RuntimeError("font unavailable")),
+    )
+
+    class UnexpectedTwitterClient:
+        def __init__(self, dry_run=False):
+            raise AssertionError("Twitter client should not be initialized when card rendering fails")
+
+    monkeypatch.setattr(automation, "TwitterClient", UnexpectedTwitterClient)
+
+    result = automation.run_daily_stoic_publish(run_hour=datetime.now(timezone.utc).hour)
+
+    assert result.status == "failed"
+    assert result.message == "Stoic image generation failed: font unavailable"
+
+    session = get_session()
+    assert session.query(Post).count() == 0
+    run = session.query(AutomationRun).filter(AutomationRun.task_key == "daily_stoic").first()
+    assert run.status == "failed"
+    session.close()
+
+
 def test_run_daily_quote_publish_posts_next_approved_quote(automation_db, monkeypatch):
     session = get_session()
     quote = Quote(
@@ -199,6 +308,7 @@ def test_run_daily_quote_publish_posts_next_approved_quote(automation_db, monkey
 
         def post_by_id(self, post_id, confirm=False, **kwargs):
             assert kwargs.get("image_bytes") == b"quote-card"
+            assert kwargs.get("require_media") is True
             session = get_session()
             db_post = session.query(Post).filter(Post.id == post_id).first()
             db_post.status = PostStatus.POSTED.value

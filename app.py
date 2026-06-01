@@ -341,6 +341,7 @@ def create_app(test_config=None):
         if not client.is_configured():
             return {"status": "error", "message": "X/Twitter credentials are not configured."}
 
+        require_media = bool(post.render_kind in {"quote", "stoic"} or quote is not None or post.quote_id)
         image_bytes = None
         if not post.media_path:
             if post.render_kind == "stoic":
@@ -356,6 +357,7 @@ def create_app(test_config=None):
                 image_url=post.media_path,
                 image_bytes=image_bytes,
                 image_filename=f"edgeofict-{post.id}.png",
+                require_media=require_media,
             )
         except Exception as exc:
             update_post_status(post, PostStatus.FAILED.value)

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from dataclasses import dataclass
@@ -22,6 +23,7 @@ UTC = timezone.utc
 DEFAULT_STOIC_TASK_KEY = "daily_stoic"
 DEFAULT_QUOTE_TASK_KEY = "daily_quote"
 DEFAULT_QUOTE_RECYCLE_DAYS = 90
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -62,8 +64,12 @@ def build_stoic_image_assets(entry: dict, content: dict) -> tuple[bytes, str | N
     if not cloudinary.is_configured():
         return image_bytes, None
 
-    public_id = f"stoic-{datetime.now(UTC).date().isoformat()}-{entry.get('title', 'wisdom').lower().replace(' ', '-')[:36]}"
-    result = cloudinary.upload_bytes(image_bytes, folder="edgeofict/stoic", public_id=public_id)
+    public_id = f"stoic-{datetime.now(UTC).date().isoformat()}-{slug_fragment(entry.get('title', 'wisdom'), fallback='wisdom')}"
+    try:
+        result = cloudinary.upload_bytes(image_bytes, folder="edgeofict/stoic", public_id=public_id)
+    except Exception as exc:
+        logger.warning("Cloudinary Stoic upload failed; continuing with direct X media upload: %s", exc)
+        return image_bytes, None
     return image_bytes, result.get("secure_url") or result.get("url")
 
 
@@ -76,7 +82,11 @@ def build_quote_image_assets(post: Post, quote: Quote | None) -> tuple[bytes, st
         return image_bytes, None
 
     public_id = f"quote-{post.id}-{slug_fragment(source_text)}"
-    result = cloudinary.upload_bytes(image_bytes, folder="edgeofict/quotes", public_id=public_id)
+    try:
+        result = cloudinary.upload_bytes(image_bytes, folder="edgeofict/quotes", public_id=public_id)
+    except Exception as exc:
+        logger.warning("Cloudinary quote upload failed; continuing with direct X media upload: %s", exc)
+        return image_bytes, None
     return image_bytes, result.get("secure_url") or result.get("url")
 
 
@@ -354,8 +364,12 @@ def run_daily_stoic_publish(
         image_url = None
         try:
             image_bytes, image_url = build_stoic_image_assets(entry, content)
-        except Exception:
-            image_bytes, image_url = None, None
+        except Exception as exc:
+            run.status = "failed"
+            run.detail = f"Stoic image generation failed: {exc}"
+            run.updated_at = datetime.now(UTC)
+            db_session.commit()
+            return AutomationResult(status="failed", message=run.detail)
 
         post = Post(
             platform="twitter",
@@ -389,7 +403,7 @@ def run_daily_stoic_publish(
             db_session.commit()
             return AutomationResult(status="failed", message=run.detail, post_id=post.id)
 
-        result = client.post_by_id(post.id, confirm=False, image_bytes=image_bytes)
+        result = client.post_by_id(post.id, confirm=False, image_bytes=image_bytes, require_media=True)
         run.updated_at = datetime.now(UTC)
 
         if result.get("status") == "posted":
@@ -510,7 +524,13 @@ def run_daily_quote_publish(
         run.updated_at = datetime.now(UTC)
         db_session.commit()
 
-        result = client.post_by_id(post.id, confirm=False, image_bytes=image_bytes, image_url=image_url)
+        result = client.post_by_id(
+            post.id,
+            confirm=False,
+            image_bytes=image_bytes,
+            image_url=image_url,
+            require_media=True,
+        )
 
         if result.get("status") == "posted":
             side_results = publish_side_platforms(content=post.content, image_url=post.media_path or image_url, dry_run=dry_run)

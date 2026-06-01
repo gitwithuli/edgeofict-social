@@ -110,7 +110,10 @@ class TwitterClient:
                 temp_path = handle.name
 
             media = self.api.media_upload(filename=temp_path)
-            return getattr(media, "media_id_string", None) or getattr(media, "media_id", None)
+            media_id = getattr(media, "media_id_string", None) or getattr(media, "media_id", None)
+            if not media_id:
+                raise ValueError("Twitter media upload returned no media ID")
+            return media_id
         finally:
             if temp_path and os.path.exists(temp_path):
                 os.unlink(temp_path)
@@ -122,9 +125,14 @@ class TwitterClient:
         image_url: Optional[str] = None,
         image_bytes: Optional[bytes] = None,
         image_filename: str = "edgeofict.png",
+        require_media: bool = False,
     ) -> dict:
         if len(text) > 280:
             return {"status": "error", "message": f"Tweet too long: {len(text)} chars"}
+
+        has_media = bool(image_url or image_bytes)
+        if require_media and not has_media:
+            return {"status": "error", "message": "This post requires an image, but no media was provided"}
 
         if self.dry_run:
             return {
@@ -132,7 +140,7 @@ class TwitterClient:
                 "message": "Dry run completed successfully",
                 "content": text,
                 "char_count": len(text),
-                "has_media": bool(image_url or image_bytes),
+                "has_media": has_media,
             }
 
         payload = {"text": text}
@@ -154,6 +162,7 @@ class TwitterClient:
         *,
         image_url: Optional[str] = None,
         image_bytes: Optional[bytes] = None,
+        require_media: bool = False,
     ) -> dict:
         if post.platform != "twitter":
             return {"status": "error", "message": "Post is not for Twitter"}
@@ -192,6 +201,7 @@ class TwitterClient:
                 image_url=image_url or post.media_path,
                 image_bytes=image_bytes,
                 image_filename=f"edgeofict-{post.id}.png",
+                require_media=require_media,
             )
             if result.get("status") != "posted":
                 post.status = PostStatus.FAILED.value
@@ -222,6 +232,7 @@ class TwitterClient:
         *,
         image_url: Optional[str] = None,
         image_bytes: Optional[bytes] = None,
+        require_media: bool = False,
     ) -> dict:
         post = self.session.query(Post).filter(Post.id == post_id).first()
         if not post:
@@ -233,7 +244,13 @@ class TwitterClient:
         if post.status != PostStatus.APPROVED.value and not self.dry_run:
             return {"status": "error", "message": "Post must be approved before posting"}
 
-        return self.post_tweet(post, confirm=confirm, image_url=image_url, image_bytes=image_bytes)
+        return self.post_tweet(
+            post,
+            confirm=confirm,
+            image_url=image_url,
+            image_bytes=image_bytes,
+            require_media=require_media,
+        )
 
     def post_next_approved(self, confirm: bool = True) -> dict:
         post = self.session.query(Post).filter(
