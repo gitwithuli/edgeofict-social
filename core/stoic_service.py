@@ -86,7 +86,7 @@ def normalize_stoic_content(payload: dict) -> dict:
     return normalized
 
 
-def generate_stoic_trading_content(entry: dict, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514") -> dict:
+def generate_stoic_trading_content(entry: dict, api_key: Optional[str] = None, model: str = "claude-sonnet-4-6") -> dict:
     resolved_api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
     if not resolved_api_key:
         raise ValueError("ANTHROPIC_API_KEY not set")

@@ -4,7 +4,7 @@ brand:
   tagline: "Track Your Trading Edge"
 
 anthropic:
-  model: claude-sonnet-4-20250514
+  model: claude-sonnet-4-6
 
 platforms:
   twitter:

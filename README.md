@@ -70,15 +70,15 @@ python main.py post --next            # Actually post
 - Use external Postgres in production via `DATABASE_URL`; local SQLite is only a fallback for development
 - See `DEPLOYMENT.md` for the free-tier hosting path
 
-## Daily Stoic Autopost
+## Daily ICT Quote Autopost
 
 The repo includes a scheduled GitHub Actions workflow at `.github/workflows/daily-stoic.yml`.
 
 - It runs hourly
-- It only publishes when the local hour matches `AUTO_STOIC_HOUR`
+- It only publishes when the local hour matches `AUTO_QUOTE_HOUR`
 - Default timezone is `America/New_York`
-- Default publish hour is `9`
-- It uses the `main.py auto-stoic` command and records a daily run in the database to avoid duplicates
+- Default publish hour is `19`
+- It uses the `main.py auto-quote` command and records a daily run in the database to avoid duplicates
 
 Required GitHub Actions secrets:
 

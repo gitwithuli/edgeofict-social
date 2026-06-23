@@ -50,7 +50,7 @@ def build_quote_post_text(content: str, hashtags: str = DEFAULT_QUOTE_HASHTAGS) 
 
 
 class PostPlanner:
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514"):
+    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-6"):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.model = model
         init_db()

@@ -59,7 +59,7 @@ python -c "from werkzeug.security import generate_password_hash; print(generate_
 
 Use the output as `ADMIN_PASSWORD_HASH`.
 
-## Automatic daily Stoic posting
+## Automatic daily ICT quote posting
 
 Do not rely on an in-process scheduler inside the Render free web service. It sleeps when idle.
 
@@ -67,9 +67,9 @@ Use the included GitHub Actions workflow instead:
 
 - File: `.github/workflows/daily-stoic.yml`
 - Schedule: hourly
-- Guard: only runs when local hour matches `AUTO_STOIC_HOUR`
+- Guard: only runs when local hour matches `AUTO_QUOTE_HOUR`
 - Default timezone: `America/New_York`
-- Default hour: `9`
+- Default hour: `19`
 
 Add these GitHub repository secrets:
 
