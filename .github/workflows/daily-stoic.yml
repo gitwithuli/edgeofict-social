@@ -10,6 +10,11 @@ on:
         required: true
         default: true
         type: boolean
+      report_only:
+        description: "Print quote queue counts without posting"
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   daily-ict-quote:
@@ -42,7 +47,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Report ICT quote queue
+        if: github.event_name == 'workflow_dispatch' && inputs.report_only == true
+        run: python main.py queue-status --json-output
+
       - name: Run ICT quote publisher
+        if: github.event_name != 'workflow_dispatch' || inputs.report_only != true
         run: |
           FORCE_FLAG=""
           if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_publish }}" = "true" ]; then

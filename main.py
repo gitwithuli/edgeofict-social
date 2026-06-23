@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import json
 import os
 import sys
 from pathlib import Path
@@ -246,6 +247,55 @@ def auto_quote(run_hour: int | None, dry: bool, force: bool):
 
     console.print(f"[red]{result.message}[/red]")
     raise SystemExit(1)
+
+
+@cli.command("queue-status")
+@click.option("--json-output", "json_output", is_flag=True, help="Print machine-readable JSON")
+def queue_status(json_output: bool):
+    """Report how many ICT quote posts are ready for upcoming autoposts."""
+    init_db()
+    session = get_session()
+    try:
+        quote_post_filter = (
+            (Post.quote_id.isnot(None))
+            | (Post.render_kind == "quote")
+        )
+
+        ready_quote_posts = session.query(Post).filter(
+            Post.platform == "twitter",
+            Post.status == PostStatus.APPROVED.value,
+            quote_post_filter,
+        ).count()
+
+        approved_unused_quotes = session.query(Quote).filter(
+            Quote.approved.is_(True),
+            (Quote.used_count == 0) | (Quote.used_count.is_(None)),
+        ).count()
+
+        approved_quotes_total = session.query(Quote).filter(Quote.approved.is_(True)).count()
+        posted_quote_posts = session.query(Post).filter(
+            Post.platform == "twitter",
+            Post.status == PostStatus.POSTED.value,
+            quote_post_filter,
+        ).count()
+
+        payload = {
+            "ready_quote_posts": ready_quote_posts,
+            "approved_unused_quotes": approved_unused_quotes,
+            "upcoming_quote_days": ready_quote_posts + approved_unused_quotes,
+            "approved_quotes_total": approved_quotes_total,
+            "posted_quote_posts": posted_quote_posts,
+        }
+
+        if json_output:
+            click.echo(json.dumps(payload, sort_keys=True))
+            return
+
+        console.print(f"[green]{payload['ready_quote_posts']}[/green] approved ICT quote posts are ready to publish.")
+        console.print(f"[green]{payload['approved_unused_quotes']}[/green] approved unused quotes can be turned into future posts.")
+        console.print(f"[cyan]{payload['upcoming_quote_days']}[/cyan] total upcoming daily quote slots are available.")
+    finally:
+        session.close()
 
 
 @cli.command()
