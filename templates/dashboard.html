@@ -325,6 +325,12 @@
                         </div>
                         <p class="library-quote">"{{ quote.content }}"</p>
                         <div class="library-actions">
+                            {% if (quote.used_count or 0) > 0 %}
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
+                                <input type="hidden" name="action" value="return-pool">
+                                <button type="submit" class="btn btn-primary btn-mini">Return to Pool</button>
+                            </form>
+                            {% endif %}
                             {% if quote.archived and (quote.used_count or 0) == 0 %}
                             <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
                                 <input type="hidden" name="action" value="restore">

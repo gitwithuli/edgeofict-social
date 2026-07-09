@@ -352,6 +352,83 @@ def test_quote_archive_restore_and_delete_actions(app_client):
     session.close()
 
 
+def test_return_pool_resets_unposted_queued_quote(app_client):
+    client, app = app_client
+
+    session = get_session(app.config["DB_ENGINE"])
+    quote = session.query(Quote).filter(Quote.id == 1).first()
+    quote.approved = True
+    quote.used_count = 1
+    quote.last_used = datetime.now(timezone.utc)
+    post = Post(
+        quote_id=quote.id,
+        platform="twitter",
+        content="Queued from old import.",
+        status="approved",
+        render_kind="quote",
+    )
+    session.add(post)
+    session.commit()
+    session.close()
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        "/actions/quotes/1",
+        data={"action": "return-pool"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"Returned quote #1 to the active pool" in response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    quote = session.query(Quote).filter(Quote.id == 1).first()
+    assert quote.approved is True
+    assert quote.archived is False
+    assert quote.used_count == 0
+    assert quote.last_used is None
+    assert session.query(Post).filter(Post.quote_id == 1).count() == 0
+    session.close()
+
+
+def test_return_pool_keeps_posted_quote_out_of_pool(app_client):
+    client, app = app_client
+
+    session = get_session(app.config["DB_ENGINE"])
+    quote = session.query(Quote).filter(Quote.id == 1).first()
+    quote.approved = True
+    quote.used_count = 1
+    quote.last_used = datetime.now(timezone.utc)
+    post = Post(
+        quote_id=quote.id,
+        platform="twitter",
+        content="Already posted.",
+        status="posted",
+        render_kind="quote",
+        post_id="tw-posted",
+        posted_time=datetime.now(timezone.utc),
+    )
+    session.add(post)
+    session.commit()
+    session.close()
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    response = client.post(
+        "/actions/quotes/1",
+        data={"action": "return-pool"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"has already been posted" in response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    quote = session.query(Quote).filter(Quote.id == 1).first()
+    assert quote.used_count == 1
+    assert session.query(Post).filter(Post.quote_id == 1).count() == 1
+    session.close()
+
+
 def test_stoic_entry_endpoint(app_client, monkeypatch):
     client, _ = app_client
 

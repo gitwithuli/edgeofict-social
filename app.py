@@ -833,6 +833,29 @@ def create_app(test_config=None):
                     quote.approved = True
                     quote.archived = False
                     flash(f"Restored quote #{quote.id}.", "success")
+                elif action == "return-pool":
+                    posted_count = (
+                        db_session.query(Post)
+                        .filter(
+                            Post.quote_id == quote.id,
+                            Post.status == PostStatus.POSTED.value,
+                        )
+                        .count()
+                    )
+                    if posted_count:
+                        flash(f"Quote #{quote.id} has already been posted, so it stays out of the active pool.", "error")
+                        return redirect(url_for("dashboard"))
+
+                    removed_posts = (
+                        db_session.query(Post)
+                        .filter(Post.quote_id == quote.id)
+                        .delete(synchronize_session=False)
+                    )
+                    quote.approved = True
+                    quote.archived = False
+                    quote.used_count = 0
+                    quote.last_used = None
+                    flash(f"Returned quote #{quote.id} to the active pool and removed {removed_posts} queued post(s).", "success")
                 elif action == "delete":
                     db_session.delete(quote)
                     flash(f"Deleted quote #{quote.id}.", "warning")
