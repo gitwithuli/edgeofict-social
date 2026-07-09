@@ -77,6 +77,7 @@ def test_login_and_quote_approval(app_client):
 
     assert response.status_code == 200
     assert b"Quote Library" in response.data
+    assert b"/static/app.js?v=2026-07-09-source-filter" in response.data
 
     response = client.post(
         "/actions/quotes/1",
@@ -303,6 +304,9 @@ def test_dashboard_shows_source_document_usage_counts(app_client):
     assert response.status_code == 200
     assert b"June 21 TGIF setup" in response.data
     assert b"View Quotes" in response.data
+    assert b'data-source-query="June 21 TGIF setup"' in response.data
+    assert b'id="archive-quote-list"' in response.data
+    assert b'used archived out of pool' in response.data
     assert b"Left" in response.data
     assert b"Used" in response.data
     assert b"Archived" in response.data

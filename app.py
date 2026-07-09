@@ -248,6 +248,7 @@ def create_app(test_config=None):
         SESSION_REFRESH_EACH_REQUEST=False,
         MAX_CONTENT_LENGTH=50 * 1024 * 1024,
         APP_TITLE="EdgeOfICT Social Control",
+        STATIC_ASSET_VERSION=os.getenv("STATIC_ASSET_VERSION", "2026-07-09-source-filter"),
     )
 
     if test_config:

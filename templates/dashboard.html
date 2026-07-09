@@ -218,9 +218,9 @@
                 <span class="section-meta">Old/manual quotes only. New extraction now auto-approves.</span>
             </div>
 
-            <div class="library-list">
+            <div class="library-list" id="pending-quote-list">
                 {% for quote in pending_quotes %}
-                <article class="library-row">
+                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' review pending') | lower }}">
                     <div class="library-copy">
                         <div class="library-badges">
                             <span class="pill pill-muted">{{ quote.source | source_label }}</span>
@@ -256,6 +256,7 @@
                 </article>
                 {% endfor %}
             </div>
+            <div class="empty-state no-results" id="pending-no-results">No pending quotes match this search.</div>
         </article>
         {% endif %}
 
@@ -314,9 +315,9 @@
             </div>
 
             {% if used_quotes %}
-            <div class="library-list">
+            <div class="library-list" id="archive-quote-list">
                 {% for quote in used_quotes %}
-                <article class="library-row">
+                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' used archived out of pool') | lower }}">
                     <div class="library-copy">
                         <div class="library-badges">
                             <span class="pill pill-muted">{{ quote.source | source_label }}</span>
@@ -361,6 +362,7 @@
                 </article>
                 {% endfor %}
             </div>
+            <div class="empty-state no-results" id="archive-no-results">No used or archived quotes match this search.</div>
             {% else %}
             <div class="empty-state">No quotes have been consumed into posts yet.</div>
             {% endif %}
