@@ -136,7 +136,7 @@
                                 {% if document.pending %}
                                 <span class="status-badge status-review">{{ document.pending }} review</span>
                                 {% endif %}
-                                <button type="button" class="btn btn-secondary btn-mini js-source-filter" data-source-query="{{ document.label }}">View Quotes</button>
+                                <button type="button" class="btn btn-secondary btn-mini js-source-filter" data-source-query="{{ document.label }}" data-source-key="{{ document.source_key }}">View Quotes</button>
                             </div>
                         </article>
                         {% endfor %}
@@ -165,7 +165,7 @@
             {% if available_quotes %}
             <div class="library-list" id="quote-library-list">
                 {% for quote in available_quotes %}
-                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' ready available') | lower }}">
+                <article class="library-row" data-source-key="{{ quote.source | source_key }}" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' ready available') | lower }}">
                     <div class="library-copy">
                         <div class="library-badges">
                             <span class="pill pill-muted">{{ quote.source | source_label }}</span>
@@ -220,7 +220,7 @@
 
             <div class="library-list" id="pending-quote-list">
                 {% for quote in pending_quotes %}
-                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' review pending') | lower }}">
+                <article class="library-row" data-source-key="{{ quote.source | source_key }}" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' review pending') | lower }}">
                     <div class="library-copy">
                         <div class="library-badges">
                             <span class="pill pill-muted">{{ quote.source | source_label }}</span>
@@ -276,7 +276,7 @@
             {% if posted_feed %}
             <div class="posted-list" id="posted-feed-list">
                 {% for item in posted_feed %}
-                <article class="posted-row" data-search="{{ item.search_text }}">
+                <article class="posted-row" data-source-key="{{ item.source_key }}" data-search="{{ item.search_text }}">
                     <div class="posted-row-head">
                         <div class="posted-meta-line">
                             <span class="status-badge status-{{ item.kind }}">{{ item.kind_label }}</span>
@@ -317,7 +317,7 @@
             {% if used_quotes %}
             <div class="library-list" id="archive-quote-list">
                 {% for quote in used_quotes %}
-                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' used archived out of pool') | lower }}">
+                <article class="library-row" data-source-key="{{ quote.source | source_key }}" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' used archived out of pool') | lower }}">
                     <div class="library-copy">
                         <div class="library-badges">
                             <span class="pill pill-muted">{{ quote.source | source_label }}</span>

@@ -25,6 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
             return null;
         }
 
+        let activeSourceKey = "";
+
         const applyFilter = () => {
             const query = input.value.trim().toLowerCase();
 
@@ -33,7 +35,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 rows.forEach((row) => {
                     const haystack = row.getAttribute("data-search") || "";
-                    const visible = !query || haystack.includes(query);
+                    const rowSourceKey = row.getAttribute("data-source-key") || "";
+                    const visible = activeSourceKey ? rowSourceKey === activeSourceKey : (!query || haystack.includes(query));
                     row.hidden = !visible;
                     if (visible) {
                         visibleCount += 1;
@@ -46,12 +49,21 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         };
 
-        input.addEventListener("input", applyFilter);
+        input.addEventListener("input", () => {
+            activeSourceKey = "";
+            applyFilter();
+        });
         applyFilter();
 
         return {
             applyFilter,
             setQuery(query) {
+                activeSourceKey = "";
+                input.value = query;
+                applyFilter();
+            },
+            setSourceFilter(query, sourceKey) {
+                activeSourceKey = sourceKey || "";
                 input.value = query;
                 applyFilter();
             },
@@ -74,7 +86,7 @@ document.addEventListener("DOMContentLoaded", () => {
         ],
     });
 
-    bindSearch({
+    const postedSearch = bindSearch({
         inputId: "posted-search",
         listId: "posted-feed-list",
         emptyId: "posted-no-results",
@@ -83,14 +95,18 @@ document.addEventListener("DOMContentLoaded", () => {
     document.querySelectorAll(".js-source-filter").forEach((button) => {
         button.addEventListener("click", () => {
             const query = button.getAttribute("data-source-query") || "";
+            const sourceKey = button.getAttribute("data-source-key") || "";
             if (!quoteSearch) {
                 return;
             }
 
-            quoteSearch.setQuery(query);
+            quoteSearch.setSourceFilter(query, sourceKey);
+            if (postedSearch) {
+                postedSearch.setSourceFilter(query, sourceKey);
+            }
 
             const firstMatch = document.querySelector(
-                "#quote-library-list [data-search]:not([hidden]), #pending-quote-list [data-search]:not([hidden]), #archive-quote-list [data-search]:not([hidden])"
+                "#quote-library-list [data-search]:not([hidden]), #pending-quote-list [data-search]:not([hidden]), #archive-quote-list [data-search]:not([hidden]), #posted-feed-list [data-search]:not([hidden])"
             );
             const scrollTarget = firstMatch || quoteSearch.input;
             scrollTarget.scrollIntoView({ behavior: "smooth", block: "center" });

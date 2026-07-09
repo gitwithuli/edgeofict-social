@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 import app as app_module
-from app import create_app
+from app import build_source_key, create_app
 from core.models import Base, Post, Quote, get_session
 from core import stoic_service
 
@@ -77,7 +77,7 @@ def test_login_and_quote_approval(app_client):
 
     assert response.status_code == 200
     assert b"Quote Library" in response.data
-    assert b"/static/app.js?v=2026-07-09-source-filter" in response.data
+    assert b"/static/app.js?v=2026-07-09-source-key-filter" in response.data
 
     response = client.post(
         "/actions/quotes/1",
@@ -271,17 +271,16 @@ def test_dashboard_shows_source_document_usage_counts(app_client):
     fresh_quote = session.query(Quote).filter(Quote.id == 1).first()
     fresh_quote.approved = True
     fresh_quote.source = "June 21 TGIF setup"
-    session.add(
-        Quote(
-            content="Used quote from same doc.",
-            source="June 21 TGIF setup",
-            topic="Market Structure",
-            quality_score=8.1,
-            approved=True,
-            used_count=1,
-            last_used=datetime.now(timezone.utc),
-        )
+    used_quote = Quote(
+        content="Used quote from same doc.",
+        source="June 21 TGIF setup",
+        topic="Market Structure",
+        quality_score=8.1,
+        approved=True,
+        used_count=1,
+        last_used=datetime.now(timezone.utc),
     )
+    session.add(used_quote)
     session.add(
         Quote(
             content="Archived quote from same doc.",
@@ -290,6 +289,17 @@ def test_dashboard_shows_source_document_usage_counts(app_client):
             quality_score=8.0,
             approved=True,
             archived=True,
+        )
+    )
+    session.flush()
+    session.add(
+        Post(
+            quote_id=used_quote.id,
+            platform="twitter",
+            content="Posted quote from same doc.",
+            status="posted",
+            render_kind="quote",
+            posted_time=datetime.now(timezone.utc),
         )
     )
     session.commit()
@@ -305,7 +315,10 @@ def test_dashboard_shows_source_document_usage_counts(app_client):
     assert b"June 21 TGIF setup" in response.data
     assert b"View Quotes" in response.data
     assert b'data-source-query="June 21 TGIF setup"' in response.data
+    expected_source_key = build_source_key("June 21 TGIF setup").encode()
+    assert b'data-source-key="' + expected_source_key + b'"' in response.data
     assert b'id="archive-quote-list"' in response.data
+    assert b'id="posted-feed-list"' in response.data
     assert b'used archived out of pool' in response.data
     assert b"Left" in response.data
     assert b"Used" in response.data

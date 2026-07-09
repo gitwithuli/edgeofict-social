@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -94,6 +95,11 @@ def display_source_label(source: str | None) -> str:
     return SOURCE_LABEL_OVERRIDES.get(cleaned, cleaned)
 
 
+def build_source_key(source: str | None) -> str:
+    cleaned = (source or "").strip() or "Unknown"
+    return hashlib.sha256(cleaned.encode("utf-8")).hexdigest()[:16]
+
+
 def quote_is_archived(quote: Quote) -> bool:
     return bool(getattr(quote, "archived", False))
 
@@ -111,6 +117,7 @@ def build_source_summaries(quotes: list[Quote]) -> list[dict]:
             raw_source,
             {
                 "source": raw_source,
+                "source_key": build_source_key(raw_source),
                 "label": display_source_label(raw_source),
                 "total": 0,
                 "available": 0,
@@ -248,7 +255,7 @@ def create_app(test_config=None):
         SESSION_REFRESH_EACH_REQUEST=False,
         MAX_CONTENT_LENGTH=50 * 1024 * 1024,
         APP_TITLE="EdgeOfICT Social Control",
-        STATIC_ASSET_VERSION=os.getenv("STATIC_ASSET_VERSION", "2026-07-09-source-filter"),
+        STATIC_ASSET_VERSION=os.getenv("STATIC_ASSET_VERSION", "2026-07-09-source-key-filter"),
     )
 
     if test_config:
@@ -498,6 +505,7 @@ def create_app(test_config=None):
                 or post.content
             )
             source_label = "Stoic"
+            source_key = ""
             meta_label = (payload.get("author") or "Daily Stoic").strip()
             search_text = " ".join(
                 filter(
@@ -513,7 +521,9 @@ def create_app(test_config=None):
         else:
             title = resolve_quote_source_text(post, quote) or post.content or "Quote post"
             body_text = post.content or title
-            source_label = display_source_label(quote.source if quote else payload.get("source"))
+            source_value = quote.source if quote else payload.get("source")
+            source_label = display_source_label(source_value)
+            source_key = build_source_key(source_value)
             meta_label = quote.topic if quote and quote.topic else "Quote"
             search_text = " ".join(filter(None, [title, body_text, source_label, meta_label]))
 
@@ -524,6 +534,7 @@ def create_app(test_config=None):
             "title": title.strip(),
             "body_text": body_text.strip(),
             "source_label": source_label,
+            "source_key": source_key,
             "meta_label": meta_label,
             "posted_time": post.posted_time,
             "url": f"https://x.com/{PROFILE_CONFIG['handle'].lstrip('@')}/status/{post.post_id}" if post.post_id else None,
@@ -608,6 +619,10 @@ def create_app(test_config=None):
     @app.template_filter("source_label")
     def source_label(value):
         return display_source_label(value)
+
+    @app.template_filter("source_key")
+    def source_key(value):
+        return build_source_key(value)
 
     @app.errorhandler(503)
     def handle_service_config(error):
