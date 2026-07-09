@@ -45,7 +45,7 @@
         <article class="panel overview-card">
             <span class="label">Waiting Review</span>
             <strong>{{ stats.quotes_pending }}</strong>
-            <span class="overview-sub">Still stored, not yet available to post</span>
+            <span class="overview-sub">Legacy/manual quotes that still need a decision</span>
             {% if stats.quotes_pending %}
             <form method="post" action="{{ url_for('approve_all_quotes') }}">
                 <button type="submit" class="btn btn-secondary btn-block">Approve All Pending</button>
@@ -68,42 +68,85 @@
 
     <section class="simple-layout">
         <article class="panel source-panel">
-            <div class="panel-head simple-panel-head">
-                <div>
-                    <span class="eyebrow">Intake</span>
-                    <h3>Import Source Document</h3>
+            <div class="source-browser-layout">
+                <div class="source-import-card">
+                    <div class="panel-head simple-panel-head">
+                        <div>
+                            <span class="eyebrow">Intake</span>
+                            <h3>Import Source Document</h3>
+                        </div>
+                    </div>
+
+                    <p class="section-meta">Upload a fresh PDF, DOCX, or TXT note. Extracted quotes are auto-approved and stay in the active pool until you archive, delete, queue, or post them.</p>
+
+                    <form method="post" action="{{ url_for('extract_quotes') }}" enctype="multipart/form-data" class="stack-form">
+                        <label>
+                            <span>PDF, DOCX, or TXT</span>
+                            <input type="file" name="document" accept=".pdf,.docx,.txt" required>
+                        </label>
+                        <button type="submit" class="btn btn-primary btn-block">Extract Quotes</button>
+                    </form>
                 </div>
-                <span class="section-meta">Upload a fresh PDF, DOCX, or TXT note to extract new quotes into the library.</span>
-            </div>
 
-            <form method="post" action="{{ url_for('extract_quotes') }}" enctype="multipart/form-data" class="stack-form">
-                <label>
-                    <span>PDF, DOCX, or TXT</span>
-                    <input type="file" name="document" accept=".pdf,.docx,.txt" required>
-                </label>
-                <button type="submit" class="btn btn-primary btn-block">Extract Quotes</button>
-            </form>
+                <div class="source-documents-card">
+                    <div class="panel-head simple-panel-head">
+                        <div>
+                            <span class="eyebrow">Library</span>
+                            <h3>Source Documents</h3>
+                        </div>
+                        <label class="search-field">
+                            <span class="sr-only">Search source documents</span>
+                            <input type="search" id="document-search" placeholder="Search documents">
+                        </label>
+                    </div>
+                    <p class="section-meta list-meta">Scan by document first: left in pool, already used, manually archived, and last usage.</p>
 
-            <div class="panel-head simple-panel-head">
-                <div>
-                    <span class="eyebrow">Library</span>
-                    <h3>Source Documents</h3>
+                    {% if documents %}
+                    <div class="document-stack" id="document-list">
+                        {% for document in documents %}
+                        <article class="document-card" data-search="{{ (document.label ~ ' ' ~ document.source) | lower }}">
+                            <div class="document-copy">
+                                <h4>{{ document.label }}</h4>
+                                <p>
+                                    Imported {{ document.last_imported | datetime_human if document.last_imported else "Unknown" }}
+                                    {% if document.last_used %} · Last used {{ document.last_used | datetime_human }}{% endif %}
+                                </p>
+                            </div>
+
+                            <div class="document-metrics">
+                                <div>
+                                    <span class="label">Left</span>
+                                    <strong>{{ document.available }}</strong>
+                                </div>
+                                <div>
+                                    <span class="label">Total</span>
+                                    <strong>{{ document.total }}</strong>
+                                </div>
+                                <div>
+                                    <span class="label">Used</span>
+                                    <strong>{{ document.used }}</strong>
+                                </div>
+                                <div>
+                                    <span class="label">Archived</span>
+                                    <strong>{{ document.archived }}</strong>
+                                </div>
+                            </div>
+
+                            <div class="document-actions">
+                                {% if document.pending %}
+                                <span class="status-badge status-review">{{ document.pending }} review</span>
+                                {% endif %}
+                                <button type="button" class="btn btn-secondary btn-mini js-source-filter" data-source-query="{{ document.label }}">View Quotes</button>
+                            </div>
+                        </article>
+                        {% endfor %}
+                    </div>
+                    <div class="empty-state no-results" id="document-no-results">No source documents match this search.</div>
+                    {% else %}
+                    <div class="empty-state">No source documents have been imported yet.</div>
+                    {% endif %}
                 </div>
-                <span class="section-meta">The document list stays because it is the fastest way to see where the quote pool is coming from.</span>
             </div>
-
-            {% if documents %}
-            <div class="document-stack">
-                {% for source, quote_count in documents %}
-                <article class="document-row">
-                    <div class="document-name">{{ source | source_label }}</div>
-                    <div class="document-count">{{ quote_count }} quotes</div>
-                </article>
-                {% endfor %}
-            </div>
-            {% else %}
-            <div class="empty-state">No source documents have been imported yet.</div>
-            {% endif %}
         </article>
 
         <article class="panel library-panel">
@@ -117,12 +160,12 @@
                     <input type="search" id="quote-search" placeholder="Search available quotes, sources, or topics">
                 </label>
             </div>
-            <div class="section-meta list-meta">Only approved quotes that have not been turned into a post yet. Used quotes move to the archive below.</div>
+            <div class="section-meta list-meta">Approved, unused, and not archived. These are eligible for auto-posting.</div>
 
             {% if available_quotes %}
             <div class="library-list" id="quote-library-list">
                 {% for quote in available_quotes %}
-                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.topic or '') ~ ' ready available') | lower }}">
+                <article class="library-row" data-search="{{ (quote.content ~ ' ' ~ (quote.source or '') ~ ' ' ~ (quote.source | source_label) ~ ' ' ~ (quote.topic or '') ~ ' ready available') | lower }}">
                     <div class="library-copy">
                         <div class="library-badges">
                             <span class="pill pill-muted">{{ quote.source | source_label }}</span>
@@ -130,6 +173,16 @@
                             <span class="status-badge status-ready">Ready</span>
                         </div>
                         <p class="library-quote">"{{ quote.content }}"</p>
+                        <div class="library-actions">
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
+                                <input type="hidden" name="action" value="archive">
+                                <button type="submit" class="btn btn-secondary btn-mini">Archive</button>
+                            </form>
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}" onsubmit="return confirm('Delete this quote permanently?')">
+                                <input type="hidden" name="action" value="delete">
+                                <button type="submit" class="btn btn-ghost btn-danger btn-mini">Delete</button>
+                            </form>
+                        </div>
                     </div>
 
                     <div class="library-metrics">
@@ -154,6 +207,57 @@
             <div class="empty-state">No unused approved quotes are available right now.</div>
             {% endif %}
         </article>
+
+        {% if pending_quotes %}
+        <article class="panel pending-panel">
+            <div class="panel-head simple-panel-head">
+                <div>
+                    <span class="eyebrow">Review</span>
+                    <h3>Needs Decision</h3>
+                </div>
+                <span class="section-meta">Old/manual quotes only. New extraction now auto-approves.</span>
+            </div>
+
+            <div class="library-list">
+                {% for quote in pending_quotes %}
+                <article class="library-row">
+                    <div class="library-copy">
+                        <div class="library-badges">
+                            <span class="pill pill-muted">{{ quote.source | source_label }}</span>
+                            <span class="pill pill-muted">{{ quote.topic or "General" }}</span>
+                            <span class="status-badge status-review">Review</span>
+                        </div>
+                        <p class="library-quote">"{{ quote.content }}"</p>
+                        <div class="library-actions">
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
+                                <input type="hidden" name="action" value="approve">
+                                <button type="submit" class="btn btn-primary btn-mini">Approve</button>
+                            </form>
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
+                                <input type="hidden" name="action" value="archive">
+                                <button type="submit" class="btn btn-secondary btn-mini">Archive</button>
+                            </form>
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}" onsubmit="return confirm('Delete this quote permanently?')">
+                                <input type="hidden" name="action" value="delete">
+                                <button type="submit" class="btn btn-ghost btn-danger btn-mini">Delete</button>
+                            </form>
+                        </div>
+                    </div>
+                    <div class="library-metrics">
+                        <div>
+                            <span class="label">Score</span>
+                            <strong>{{ "%.1f"|format(quote.quality_score or 0) }}</strong>
+                        </div>
+                        <div>
+                            <span class="label">Used</span>
+                            <strong>{{ quote.used_count or 0 }}</strong>
+                        </div>
+                    </div>
+                </article>
+                {% endfor %}
+            </div>
+        </article>
+        {% endif %}
 
         <article class="panel posted-panel">
             <div class="panel-head simple-panel-head">
@@ -204,9 +308,9 @@
             <div class="panel-head simple-panel-head">
                 <div>
                     <span class="eyebrow">Archive</span>
-                    <h3>Used Quote Archive</h3>
+                    <h3>Used / Archived Quotes</h3>
                 </div>
-                <span class="section-meta">Quotes leave the active pool once a post has been generated from them. The autoposter keeps them out of rotation until the pool needs recycling.</span>
+                <span class="section-meta">Generated or manually archived quotes stay here so the active pool only shows usable material.</span>
             </div>
 
             {% if used_quotes %}
@@ -217,9 +321,21 @@
                         <div class="library-badges">
                             <span class="pill pill-muted">{{ quote.source | source_label }}</span>
                             <span class="pill pill-muted">{{ quote.topic or "General" }}</span>
-                            <span class="status-badge status-used">Archived</span>
+                            <span class="status-badge status-used">{{ "Archived" if quote.archived else "Used" }}</span>
                         </div>
                         <p class="library-quote">"{{ quote.content }}"</p>
+                        <div class="library-actions">
+                            {% if quote.archived and (quote.used_count or 0) == 0 %}
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}">
+                                <input type="hidden" name="action" value="restore">
+                                <button type="submit" class="btn btn-secondary btn-mini">Restore</button>
+                            </form>
+                            {% endif %}
+                            <form method="post" action="{{ url_for('handle_quote_action', quote_id=quote.id) }}" onsubmit="return confirm('Delete this quote permanently?')">
+                                <input type="hidden" name="action" value="delete">
+                                <button type="submit" class="btn btn-ghost btn-danger btn-mini">Delete</button>
+                            </form>
+                        </div>
                     </div>
 
                     <div class="library-metrics">
@@ -233,7 +349,7 @@
                         </div>
                         <div>
                             <span class="label">State</span>
-                            <strong>Out of Pool</strong>
+                            <strong>{{ "Manual Archive" if quote.archived else "Used by Post" }}</strong>
                         </div>
                     </div>
                 </article>

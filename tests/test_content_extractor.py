@@ -67,6 +67,9 @@ def test_save_quotes_to_db_skips_normalized_duplicates():
     assert saved_count == 1
     assert len(saved_ids) == 1
     assert session.query(Quote).count() == 2
+    saved_quote = session.query(Quote).filter(Quote.id == saved_ids[0]).first()
+    assert saved_quote.approved is True
+    assert saved_quote.archived is False
 
     session.close()
     os.unlink(db_path)

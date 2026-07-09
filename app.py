@@ -94,6 +94,71 @@ def display_source_label(source: str | None) -> str:
     return SOURCE_LABEL_OVERRIDES.get(cleaned, cleaned)
 
 
+def quote_is_archived(quote: Quote) -> bool:
+    return bool(getattr(quote, "archived", False))
+
+
+def quote_is_available(quote: Quote) -> bool:
+    return bool(quote.approved) and not quote_is_archived(quote) and (quote.used_count or 0) == 0
+
+
+def build_source_summaries(quotes: list[Quote]) -> list[dict]:
+    summaries: dict[str, dict] = {}
+
+    for quote in quotes:
+        raw_source = (quote.source or "").strip() or "Unknown"
+        entry = summaries.setdefault(
+            raw_source,
+            {
+                "source": raw_source,
+                "label": display_source_label(raw_source),
+                "total": 0,
+                "available": 0,
+                "used": 0,
+                "archived": 0,
+                "pending": 0,
+                "first_imported": None,
+                "last_imported": None,
+                "last_used": None,
+            },
+        )
+
+        entry["total"] += 1
+        if quote_is_available(quote):
+            entry["available"] += 1
+        if (quote.used_count or 0) > 0:
+            entry["used"] += 1
+        if quote_is_archived(quote):
+            entry["archived"] += 1
+        if not quote.approved:
+            entry["pending"] += 1
+
+        if quote.created_at:
+            if entry["first_imported"] is None or quote.created_at < entry["first_imported"]:
+                entry["first_imported"] = quote.created_at
+            if entry["last_imported"] is None or quote.created_at > entry["last_imported"]:
+                entry["last_imported"] = quote.created_at
+
+        if quote.last_used:
+            if entry["last_used"] is None or quote.last_used > entry["last_used"]:
+                entry["last_used"] = quote.last_used
+
+    def sort_timestamp(value):
+        if not value:
+            return 0
+        return value.timestamp()
+
+    return sorted(
+        summaries.values(),
+        key=lambda item: (
+            item["available"],
+            sort_timestamp(item["last_imported"]),
+            item["label"].lower(),
+        ),
+        reverse=True,
+    )
+
+
 def build_integration_hints():
     return {
         "anthropic": {
@@ -413,24 +478,6 @@ def create_app(test_config=None):
         quote.last_used = datetime.now(UTC)
         return post
 
-    def auto_queue_imported_quotes(db_session, quote_ids: list[int], *, use_ai: bool = False) -> int:
-        if not quote_ids:
-            return 0
-
-        quotes = (
-            db_session.query(Quote)
-            .filter(Quote.id.in_(quote_ids))
-            .order_by(Quote.id.asc())
-            .all()
-        )
-
-        created = 0
-        for quote in quotes:
-            create_post_from_quote(db_session, quote, use_ai=use_ai, status=PostStatus.APPROVED.value)
-            created += 1
-
-        return created
-
     def get_dashboard_stoic_entry():
         try:
             return stoic_service.get_stoic_entry_for_today()
@@ -496,11 +543,15 @@ def create_app(test_config=None):
             )
             available_quotes = [
                 quote for quote in quotes
-                if quote.approved and (quote.used_count or 0) == 0
+                if quote_is_available(quote)
             ]
             used_quotes = [
                 quote for quote in quotes
-                if quote.approved and (quote.used_count or 0) > 0
+                if quote.approved and ((quote.used_count or 0) > 0 or quote_is_archived(quote))
+            ]
+            pending_quotes = [
+                quote for quote in quotes
+                if not quote.approved
             ]
             posted_posts = (
                 db_session.query(Post)
@@ -509,12 +560,7 @@ def create_app(test_config=None):
                 .limit(150)
                 .all()
             )
-            documents = (
-                db_session.query(Quote.source, func.count(Quote.id).label("quote_count"))
-                .group_by(Quote.source)
-                .order_by(func.count(Quote.id).desc(), Quote.source.asc())
-                .all()
-            )
+            documents = build_source_summaries(quotes)
             stats = {
                 "quotes_total": db_session.query(Quote).count(),
                 "quotes_pending": db_session.query(Quote).filter(Quote.approved.is_(False)).count(),
@@ -532,6 +578,7 @@ def create_app(test_config=None):
             "quotes": quotes,
             "available_quotes": available_quotes,
             "used_quotes": used_quotes,
+            "pending_quotes": pending_quotes,
             "posted_posts": posted_posts,
             "posted_feed": posted_feed,
             "documents": documents,
@@ -658,13 +705,16 @@ def create_app(test_config=None):
             result = extractor.extract_and_save(temp_path, source_name=source_name, return_quote_ids=True)
             extracted, saved, saved_quote_ids = result
 
-            created_posts = 0
             if saved_quote_ids:
                 with db_session_scope() as db_session:
-                    created_posts = auto_queue_imported_quotes(db_session, saved_quote_ids, use_ai=False)
+                    for quote in db_session.query(Quote).filter(Quote.id.in_(saved_quote_ids)).all():
+                        quote.approved = True
+                        quote.archived = False
+                        quote.used_count = quote.used_count or 0
+                        quote.last_used = quote.last_used if (quote.used_count or 0) > 0 else None
 
             flash(
-                f"Imported {saved} new quotes from {upload.filename} ({extracted} extracted) and queued {created_posts} ready posts.",
+                f"Imported {saved} new quotes from {upload.filename} ({extracted} extracted). New quotes are approved and ready in the pool.",
                 "success",
             )
         except ValueError as exc:
@@ -771,10 +821,21 @@ def create_app(test_config=None):
 
                 if action == "approve":
                     quote.approved = True
+                    quote.archived = False
                     flash(f"Approved quote #{quote.id}.", "success")
                 elif action == "reject":
                     quote.approved = False
                     flash(f"Moved quote #{quote.id} back to review.", "warning")
+                elif action == "archive":
+                    quote.archived = True
+                    flash(f"Archived quote #{quote.id}.", "warning")
+                elif action == "restore":
+                    quote.approved = True
+                    quote.archived = False
+                    flash(f"Restored quote #{quote.id}.", "success")
+                elif action == "delete":
+                    db_session.delete(quote)
+                    flash(f"Deleted quote #{quote.id}.", "warning")
                 elif action == "queue":
                     post = create_post_from_quote(db_session, quote, use_ai=use_ai)
                     flash(f"Queued draft post #{post.id} from quote #{quote.id}.", "success")

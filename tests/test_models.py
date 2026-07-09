@@ -33,6 +33,7 @@ def test_quote_creation(db_session):
 
     assert quote.id is not None
     assert quote.approved is False
+    assert quote.archived is False
     assert quote.used_count == 0
 
 

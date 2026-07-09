@@ -33,6 +33,12 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     bindSearch({
+        inputId: "document-search",
+        listId: "document-list",
+        emptyId: "document-no-results",
+    });
+
+    bindSearch({
         inputId: "quote-search",
         listId: "quote-library-list",
         emptyId: "quote-no-results",
@@ -42,5 +48,20 @@ document.addEventListener("DOMContentLoaded", () => {
         inputId: "posted-search",
         listId: "posted-feed-list",
         emptyId: "posted-no-results",
+    });
+
+    document.querySelectorAll(".js-source-filter").forEach((button) => {
+        button.addEventListener("click", () => {
+            const query = button.getAttribute("data-source-query") || "";
+            const quoteSearch = document.getElementById("quote-search");
+            if (!quoteSearch) {
+                return;
+            }
+
+            quoteSearch.value = query;
+            quoteSearch.dispatchEvent(new Event("input", { bubbles: true }));
+            quoteSearch.scrollIntoView({ behavior: "smooth", block: "center" });
+            quoteSearch.focus();
+        });
     });
 });

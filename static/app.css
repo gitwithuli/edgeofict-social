@@ -256,6 +256,11 @@ select:focus {
     background: rgba(255, 255, 255, 0.02);
 }
 
+.btn-danger {
+    border-color: rgba(241, 125, 101, 0.28);
+    color: #ffae9d;
+}
+
 .login-note,
 .hero-badges,
 .action-row,
@@ -1044,6 +1049,19 @@ select:focus {
     grid-column: 1 / -1;
 }
 
+.source-browser-layout {
+    display: grid;
+    grid-template-columns: minmax(18rem, 0.42fr) minmax(0, 1fr);
+    gap: 1rem;
+    align-items: start;
+}
+
+.source-import-card,
+.source-documents-card {
+    display: grid;
+    gap: 1rem;
+}
+
 .simple-panel-head {
     align-items: end;
 }
@@ -1069,6 +1087,7 @@ select:focus {
 }
 
 .document-row,
+.document-card,
 .library-row,
 .posted-row {
     border-radius: 20px;
@@ -1082,6 +1101,59 @@ select:focus {
     justify-content: space-between;
     gap: 1rem;
     padding: 1rem 1.15rem;
+}
+
+.document-card {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(20rem, 1fr) auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 1rem 1.1rem;
+}
+
+.document-copy {
+    min-width: 0;
+}
+
+.document-copy h4 {
+    margin: 0;
+    color: var(--soft);
+    font-size: 1rem;
+    line-height: 1.35;
+}
+
+.document-copy p {
+    margin: 0.35rem 0 0;
+    font-size: 0.88rem;
+    line-height: 1.45;
+}
+
+.document-metrics {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.55rem;
+}
+
+.document-metrics div {
+    padding: 0.7rem 0.75rem;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    background: rgba(5, 11, 10, 0.48);
+}
+
+.document-metrics strong {
+    display: block;
+    margin-top: 0.25rem;
+    color: var(--soft);
+    font-size: 1.05rem;
+}
+
+.document-actions {
+    display: flex;
+    gap: 0.55rem;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
 }
 
 .document-name {
@@ -1172,6 +1244,16 @@ select:focus {
     line-height: 1.35;
 }
 
+.library-actions {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+}
+
+.library-actions form {
+    margin: 0;
+}
+
 .status-badge {
     display: inline-flex;
     align-items: center;
@@ -1259,7 +1341,9 @@ select:focus {
 
 @media (max-width: 1180px) {
     .overview-grid,
-    .simple-layout {
+    .simple-layout,
+    .source-browser-layout,
+    .document-card {
         grid-template-columns: 1fr;
     }
 
@@ -1279,10 +1363,16 @@ select:focus {
     }
 
     .simple-panel-head,
+    .document-actions,
     .posted-row-head,
     .posted-footer {
         flex-direction: column;
         align-items: flex-start;
+    }
+
+    .document-metrics {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        width: 100%;
     }
 
     .search-field {

@@ -139,7 +139,8 @@ class ContentExtractor:
                 source=quote_data.get("source", "Unknown"),
                 topic=quote_data.get("topic", "General"),
                 quality_score=quote_data.get("quality_score", 5.0),
-                approved=False,
+                approved=True,
+                archived=False,
                 created_at=datetime.now(timezone.utc)
             )
             session.add(quote)

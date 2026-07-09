@@ -156,7 +156,7 @@ def test_dashboard_available_pool_excludes_used_quotes(app_client):
     assert response.status_code == 200
     assert b"1 ready for auto-posting" in response.data
     assert b"Available Quote Pool" in response.data
-    assert b"Used Quote Archive" in response.data
+    assert b"Used / Archived Quotes" in response.data
     assert b"Archived" in response.data
 
 
@@ -216,9 +216,10 @@ def test_extract_quotes_uses_original_upload_name(app_client, monkeypatch):
     assert response.status_code == 200
     assert captured["source_name"] == "The Sands of Time"
     assert b"Imported 7 new quotes from The Sands of Time.txt" in response.data
+    assert b"approved and ready in the pool" in response.data
 
 
-def test_extract_quotes_auto_queues_ready_posts(app_client, monkeypatch):
+def test_extract_quotes_auto_approves_without_consuming_quotes(app_client, monkeypatch):
     client, app = app_client
 
     class FakeExtractor:
@@ -248,12 +249,106 @@ def test_extract_quotes_auto_queues_ready_posts(app_client, monkeypatch):
     )
 
     assert response.status_code == 200
-    assert b"queued 1 ready posts" in response.data
+    assert b"approved and ready in the pool" in response.data
 
     session = get_session(app.config["DB_ENGINE"])
     posts = session.query(Post).filter(Post.status == "approved").all()
-    assert len(posts) == 1
-    assert posts[0].quote_id is not None
+    assert len(posts) == 0
+    quote = session.query(Quote).filter(Quote.content == "Consistency is the edge.").first()
+    assert quote is not None
+    assert quote.approved is True
+    assert quote.archived is False
+    assert quote.used_count == 0
+    assert quote.last_used is None
+    session.close()
+
+
+def test_dashboard_shows_source_document_usage_counts(app_client):
+    client, app = app_client
+
+    session = get_session(app.config["DB_ENGINE"])
+    fresh_quote = session.query(Quote).filter(Quote.id == 1).first()
+    fresh_quote.approved = True
+    fresh_quote.source = "June 21 TGIF setup"
+    session.add(
+        Quote(
+            content="Used quote from same doc.",
+            source="June 21 TGIF setup",
+            topic="Market Structure",
+            quality_score=8.1,
+            approved=True,
+            used_count=1,
+            last_used=datetime.now(timezone.utc),
+        )
+    )
+    session.add(
+        Quote(
+            content="Archived quote from same doc.",
+            source="June 21 TGIF setup",
+            topic="Patience",
+            quality_score=8.0,
+            approved=True,
+            archived=True,
+        )
+    )
+    session.commit()
+    session.close()
+
+    response = client.post(
+        "/login",
+        data={"username": "admin", "password": "secret"},
+        follow_redirects=True,
+    )
+
+    assert response.status_code == 200
+    assert b"June 21 TGIF setup" in response.data
+    assert b"View Quotes" in response.data
+    assert b"Left" in response.data
+    assert b"Used" in response.data
+    assert b"Archived" in response.data
+
+
+def test_quote_archive_restore_and_delete_actions(app_client):
+    client, app = app_client
+
+    session = get_session(app.config["DB_ENGINE"])
+    quote = session.query(Quote).filter(Quote.id == 1).first()
+    quote.approved = True
+    session.commit()
+    session.close()
+
+    client.post("/login", data={"username": "admin", "password": "secret"})
+    archive_response = client.post(
+        "/actions/quotes/1",
+        data={"action": "archive"},
+        follow_redirects=True,
+    )
+    assert archive_response.status_code == 200
+    assert b"Archived quote #1." in archive_response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    quote = session.query(Quote).filter(Quote.id == 1).first()
+    assert quote.archived is True
+    session.close()
+
+    restore_response = client.post(
+        "/actions/quotes/1",
+        data={"action": "restore"},
+        follow_redirects=True,
+    )
+    assert restore_response.status_code == 200
+    assert b"Restored quote #1." in restore_response.data
+
+    delete_response = client.post(
+        "/actions/quotes/1",
+        data={"action": "delete"},
+        follow_redirects=True,
+    )
+    assert delete_response.status_code == 200
+    assert b"Deleted quote #1." in delete_response.data
+
+    session = get_session(app.config["DB_ENGINE"])
+    assert session.query(Quote).filter(Quote.id == 1).first() is None
     session.close()
 
 

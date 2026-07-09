@@ -33,6 +33,7 @@ class Quote(Base):
     used_count = Column(Integer, default=0, index=True)
     last_used = Column(DateTime)
     approved = Column(Boolean, default=False, index=True)
+    archived = Column(Boolean, default=False, index=True)
     created_at = Column(DateTime, default=utc_now)
 
     def __repr__(self):
@@ -146,17 +147,21 @@ def init_db(engine=None):
 def ensure_runtime_schema(engine):
     """Apply lightweight additive schema changes for hosted deployments."""
     inspector = inspect(engine)
-
-    if "posts" not in inspector.get_table_names():
-        return
-
-    existing_columns = {column["name"] for column in inspector.get_columns("posts")}
+    table_names = inspector.get_table_names()
     statements = []
 
-    if "render_kind" not in existing_columns:
-        statements.append("ALTER TABLE posts ADD COLUMN render_kind VARCHAR(50)")
-    if "render_payload" not in existing_columns:
-        statements.append("ALTER TABLE posts ADD COLUMN render_payload TEXT")
+    if "posts" in table_names:
+        existing_post_columns = {column["name"] for column in inspector.get_columns("posts")}
+        if "render_kind" not in existing_post_columns:
+            statements.append("ALTER TABLE posts ADD COLUMN render_kind VARCHAR(50)")
+        if "render_payload" not in existing_post_columns:
+            statements.append("ALTER TABLE posts ADD COLUMN render_payload TEXT")
+
+    if "quotes" in table_names:
+        existing_quote_columns = {column["name"] for column in inspector.get_columns("quotes")}
+        if "archived" not in existing_quote_columns:
+            default_value = "0" if engine.dialect.name == "sqlite" else "FALSE"
+            statements.append(f"ALTER TABLE quotes ADD COLUMN archived BOOLEAN DEFAULT {default_value}")
 
     if not statements:
         return
