@@ -13,6 +13,7 @@ except ImportError:
 from rich.console import Console
 from rich.panel import Panel
 
+from core.hashtag_selector import sanitize_caption_for_platform
 from core.models import Post, PostStatus, get_session, init_db
 
 UTC = timezone.utc
@@ -166,6 +167,8 @@ class TwitterClient:
     ) -> dict:
         if post.platform != "twitter":
             return {"status": "error", "message": "Post is not for Twitter"}
+
+        post.content = sanitize_caption_for_platform("x", post.content or "")
 
         if len(post.content) > 280:
             return {"status": "error", "message": f"Tweet too long: {len(post.content)} chars"}

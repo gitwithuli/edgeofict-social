@@ -12,6 +12,7 @@ from sqlalchemy import or_
 
 from .models import AutomationRun, Post, PostStatus, Quote, get_session, init_db
 from . import brand_media, stoic_service
+from .hashtag_selector import sanitize_caption_for_platform
 from .post_planner import build_quote_post_text
 from .quote_dedupe import normalize_quote_for_matching
 from integrations.cloudinary_client import CloudinaryClient
@@ -115,8 +116,27 @@ def get_or_create_run(db_session, *, task_key: str, run_date: str, detail: str) 
     return run
 
 
-def publish_side_platforms(*, content: str, image_url: str | None, dry_run: bool = False) -> dict:
+def publish_side_platforms(
+    *,
+    content: str,
+    image_url: str | None,
+    dry_run: bool = False,
+    source_text: str | None = None,
+    supporting_text: str = "",
+) -> dict:
     results: dict[str, dict] = {}
+    facebook_caption = sanitize_caption_for_platform(
+        "facebook",
+        content,
+        source_text=source_text,
+        supporting_text=supporting_text,
+    )
+    instagram_caption = sanitize_caption_for_platform(
+        "instagram",
+        content,
+        source_text=source_text,
+        supporting_text=supporting_text,
+    )
 
     if dry_run:
         return {
@@ -128,9 +148,9 @@ def publish_side_platforms(*, content: str, image_url: str | None, dry_run: bool
     if facebook.is_configured():
         try:
             if image_url:
-                response = facebook.post_image(image_url, content)
+                response = facebook.post_image(image_url, facebook_caption)
             else:
-                response = facebook.post_text(content)
+                response = facebook.post_text(facebook_caption)
             results["facebook"] = {"status": "posted", "url": response.get("url")}
         except Exception as exc:
             results["facebook"] = {"status": "error", "message": str(exc)}
@@ -141,7 +161,7 @@ def publish_side_platforms(*, content: str, image_url: str | None, dry_run: bool
     if instagram.is_configured():
         if image_url:
             try:
-                response = instagram.post_image(image_url, content)
+                response = instagram.post_image(image_url, instagram_caption)
                 results["instagram"] = {"status": "posted", "url": response.get("url")}
             except Exception as exc:
                 results["instagram"] = {"status": "error", "message": str(exc)}
@@ -287,7 +307,7 @@ def create_approved_quote_post(db_session) -> Post | None:
     post = Post(
         quote_id=quote.id,
         platform="twitter",
-        content=build_quote_post_text(quote.content),
+        content=build_quote_post_text(quote.content, supporting_text=quote.topic or ""),
         render_kind="quote",
         status=PostStatus.APPROVED.value,
         approved_at=now_utc,
@@ -352,7 +372,11 @@ def run_daily_stoic_publish(
             return AutomationResult(status="failed", message=run.detail)
 
         content = stoic_service.generate_stoic_trading_content(entry)
-        tweet = (content.get("tweet") or "").strip()
+        tweet = sanitize_caption_for_platform(
+            "x",
+            (content.get("tweet") or "").strip(),
+            supporting_text="stoic trading psychology",
+        )
         if not tweet:
             run.status = "failed"
             run.detail = "Stoic generation returned no tweet text."
@@ -497,6 +521,14 @@ def run_daily_quote_publish(
         quote = None
         if post.quote_id:
             quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
+        source_text = quote.content if quote and quote.content else resolve_post_quote_text(post, {})
+        supporting_text = quote.topic if quote and quote.topic else ""
+        post.content = sanitize_caption_for_platform(
+            "x",
+            post.content or "",
+            source_text=source_text,
+            supporting_text=supporting_text,
+        )
 
         image_bytes = None
         image_url = post.media_path
@@ -533,7 +565,13 @@ def run_daily_quote_publish(
         )
 
         if result.get("status") == "posted":
-            side_results = publish_side_platforms(content=post.content, image_url=post.media_path or image_url, dry_run=dry_run)
+            side_results = publish_side_platforms(
+                content=post.content,
+                image_url=post.media_path or image_url,
+                dry_run=dry_run,
+                source_text=source_text,
+                supporting_text=supporting_text,
+            )
             run.status = "posted"
             run.detail = compose_publish_message("Quote post published", side_results)
             db_session.commit()

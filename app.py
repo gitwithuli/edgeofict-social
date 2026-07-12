@@ -33,6 +33,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash
 
 from core.content_extractor import ContentExtractor
+from core.hashtag_selector import sanitize_caption_for_platform
 from core.models import Post, PostStatus, Quote, get_engine, get_session, init_db, resolve_db_url
 from core.post_planner import PostPlanner
 from core import brand_media, stoic_service
@@ -414,13 +415,22 @@ def create_app(test_config=None):
         if not client.is_configured():
             return {"status": "error", "message": "X/Twitter credentials are not configured."}
 
+        if quote is None and post.quote_id:
+            quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
+        source_text = resolve_quote_source_text(post, quote)
+        supporting_text = quote.topic if quote and quote.topic else ""
+        post.content = sanitize_caption_for_platform(
+            "x",
+            post.content or "",
+            source_text=source_text,
+            supporting_text=supporting_text,
+        )
+
         require_media = bool(post.render_kind in {"quote", "stoic"} or quote is not None or post.quote_id)
         image_bytes = None
         if not post.media_path:
             if post.render_kind == "stoic":
                 image_bytes = render_stoic_media_from_post(post)
-            elif quote is None and post.quote_id:
-                quote = db_session.query(Quote).filter(Quote.id == post.quote_id).first()
             if image_bytes is None and (quote is not None or post.render_kind == "quote"):
                 image_bytes = ensure_quote_media(post, quote)
 
@@ -942,7 +952,9 @@ def create_app(test_config=None):
                         flash("Facebook credentials are not configured.", "error")
                         return redirect(url_for("dashboard"))
                     media_url = ensure_public_post_media(db_session, post)
-                    result = client.post_image(media_url, post.content) if media_url else client.post_text(post.content)
+                    source_text = resolve_quote_source_text(post)
+                    caption = sanitize_caption_for_platform("facebook", post.content or "", source_text=source_text)
+                    result = client.post_image(media_url, caption) if media_url else client.post_text(caption)
                     flash(f"Posted to Facebook: {result.get('url')}", "success")
                 elif action == "publish-instagram":
                     media_url = ensure_public_post_media(db_session, post)
@@ -953,7 +965,9 @@ def create_app(test_config=None):
                     if not client.is_configured():
                         flash("Instagram credentials are not configured.", "error")
                         return redirect(url_for("dashboard"))
-                    result = client.post_image(media_url, post.content)
+                    source_text = resolve_quote_source_text(post)
+                    caption = sanitize_caption_for_platform("instagram", post.content or "", source_text=source_text)
+                    result = client.post_image(media_url, caption)
                     flash(f"Posted to Instagram: {result.get('url')}", "success")
                 else:
                     flash("Unknown post action.", "error")
@@ -1023,6 +1037,11 @@ def create_app(test_config=None):
                 return jsonify({"error": "No Stoic entry found for today."}), 404
 
             content = stoic_service.generate_stoic_trading_content(entry)
+            content["tweet"] = sanitize_caption_for_platform(
+                "x",
+                content.get("tweet", ""),
+                supporting_text="stoic trading psychology",
+            )
             media = build_stoic_media(
                 {
                     "date": entry.get("date", ""),
@@ -1053,7 +1072,11 @@ def create_app(test_config=None):
     @login_required
     def queue_stoic():
         payload = request.get_json(silent=True) or {}
-        tweet = (payload.get("tweet") or "").strip()
+        tweet = sanitize_caption_for_platform(
+            "x",
+            (payload.get("tweet") or "").strip(),
+            supporting_text="stoic trading psychology",
+        )
         status = payload.get("status", PostStatus.PENDING.value)
         render_payload = payload.get("render_payload") or {}
 

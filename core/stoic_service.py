@@ -112,7 +112,7 @@ Create content for a hosted control panel preview with these elements:
 
 3. Key takeaway: A punchy, memorable line (under 10 words)
 
-4. Tweet text: A tweet (under 250 chars) with the key insight + trading angle. Include hashtags: #ict #trader #tradingpsychology #stoic
+4. Tweet text: A tweet (under 250 chars) with the key insight + trading angle. Do not include hashtags; the publishing system adds contextual tags separately.
 
 Respond in JSON format only:
 {{

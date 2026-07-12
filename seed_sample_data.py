@@ -270,7 +270,7 @@ def seed_posts():
     session.query(Post).delete()
     session.commit()
 
-    from core.post_planner import PostPlanner
+    from core.post_planner import PostPlanner, build_quote_post_text
     planner = PostPlanner()
 
     quotes = planner.get_shuffled_quotes(14, min_score=7.0)
@@ -281,12 +281,7 @@ def seed_posts():
 
     for i, quote in enumerate(quotes):
         scheduled = base_time + timedelta(days=i)
-        hashtags = planner._get_hashtags_for_topic(quote.topic)
-
-        content = f'"{quote.content}"\n\nTrack your edge.\n\n{hashtags}'
-        if len(content) > 280:
-            max_len = 280 - len(f'"\n\nTrack your edge.\n\n{hashtags}') - 6
-            content = f'"{quote.content[:max_len]}..."\n\nTrack your edge.\n\n{hashtags}'
+        content = build_quote_post_text(quote.content, supporting_text=quote.topic or "")
 
         post = Post(
             quote_id=quote.id,

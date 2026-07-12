@@ -311,6 +311,7 @@ def test_run_daily_quote_publish_posts_next_approved_quote(automation_db, monkey
             assert kwargs.get("require_media") is True
             session = get_session()
             db_post = session.query(Post).filter(Post.id == post_id).first()
+            assert "#ICT #SMC #NQ #ES #Trading" not in db_post.content
             db_post.status = PostStatus.POSTED.value
             db_post.posted_time = datetime.now(timezone.utc)
             db_post.post_id = "quote123"
@@ -359,7 +360,8 @@ def test_run_daily_quote_publish_creates_post_from_approved_quote_when_queue_emp
             assert kwargs.get("image_bytes") == b"quote-card"
             session = get_session()
             db_post = session.query(Post).filter(Post.id == post_id).first()
-            assert db_post.content.endswith("#ICT #SMC #NQ #ES #Trading")
+            assert "#ICT #SMC #NQ #ES #Trading" not in db_post.content
+            assert db_post.content.count("#") <= 1
             db_post.status = PostStatus.POSTED.value
             db_post.posted_time = datetime.now(timezone.utc)
             db_post.post_id = "quote789"

@@ -15,6 +15,8 @@ load_dotenv()
 UTC = timezone.utc
 
 from core.models import Quote, Post, PostStatus, init_db, get_session
+from core.hashtag_selector import sanitize_caption_for_platform
+from core.post_planner import build_quote_post_text
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -2042,7 +2044,7 @@ DASHBOARD_TEMPLATE = """
             } else {
                 // Quote - get full content and format as post preview
                 const quoteText = getFullContent(card) || card.querySelector('.card-content').textContent.replace(/^"|"$/g, '');
-                content = '"' + quoteText + '"\\n\\nTrack your edge.\\n\\n#ICT #SMC #NQ #ES #Trading';
+                content = '"' + quoteText + '"\\n\\nTrack your edge.';
             }
 
             // Format content with styled hashtags
@@ -3927,11 +3929,7 @@ def quote_to_post():
     if not quote:
         return jsonify({'error': 'Quote not found'}), 404
 
-    hashtags = "#ICT #SMC #NQ #ES #Trading"
-    content = f'"{quote.content}"\n\nTrack your edge.\n\n{hashtags}'
-    if len(content) > 280:
-        max_len = 280 - len(f'"\n\nTrack your edge.\n\n{hashtags}') - 6
-        content = f'"{quote.content[:max_len]}..."\n\nTrack your edge.\n\n{hashtags}'
+    content = build_quote_post_text(quote.content, supporting_text=quote.topic or "")
 
     post = Post(
         quote_id=quote.id,
@@ -4084,6 +4082,8 @@ def post_to_facebook():
                 return jsonify({'error': 'Post not found'}), 404
             content = post.content
 
+        content = sanitize_caption_for_platform('facebook', content or '')
+
         if image_url:
             result = client.post_image(image_url, content)
         else:
@@ -4235,6 +4235,8 @@ def post_to_social():
     image_data = data.get('image')
     caption = data.get('caption', '')
     platforms = data.get('platforms', ['facebook', 'instagram'])
+    facebook_caption = sanitize_caption_for_platform('facebook', caption)
+    instagram_caption = sanitize_caption_for_platform('instagram', caption)
 
     results = {'facebook': None, 'instagram': None}
     errors = []
@@ -4258,9 +4260,9 @@ def post_to_social():
             fb_client = FacebookClient()
             if fb_client.is_configured():
                 if image_url:
-                    result = fb_client.post_image(image_url, caption)
+                    result = fb_client.post_image(image_url, facebook_caption)
                 else:
-                    result = fb_client.post_text(caption)
+                    result = fb_client.post_text(facebook_caption)
                 results['facebook'] = result
         except Exception as e:
             errors.append(f'Facebook: {str(e)}')
@@ -4271,7 +4273,7 @@ def post_to_social():
             from integrations.instagram_client import InstagramClient
             ig_client = InstagramClient()
             if ig_client.is_configured():
-                result = ig_client.post_image(image_url, caption)
+                result = ig_client.post_image(image_url, instagram_caption)
                 results['instagram'] = result
         except Exception as e:
             errors.append(f'Instagram: {str(e)}')
@@ -4342,7 +4344,7 @@ Create content for the trading card with these elements:
 
 3. Key takeaway: A punchy, memorable line (under 10 words)
 
-4. Tweet text: A tweet (under 250 chars) with the key insight + trading angle. Include hashtags: #ict #trader #tradingpsychology #stoic
+4. Tweet text: A tweet (under 250 chars) with the key insight + trading angle. Do not include hashtags; the publishing system adds contextual tags separately.
 
 Respond in JSON format only:
 {{
@@ -4576,7 +4578,11 @@ def generate_stoic_card():
             'point3_trading': content['point3_trading'],
             'closing_wisdom': content['closing_wisdom'],
             'key_takeaway': content['key_takeaway'],
-            'tweet': content['tweet']
+            'tweet': sanitize_caption_for_platform(
+                'x',
+                content['tweet'],
+                supporting_text='stoic trading psychology',
+            )
         })
 
     except ValueError as e:
@@ -4593,7 +4599,11 @@ def generate_stoic_card():
 def queue_stoic_card():
     """Add generated stoic card to the post queue."""
     data = request.json
-    tweet = data.get('tweet')
+    tweet = sanitize_caption_for_platform(
+        'x',
+        data.get('tweet') or '',
+        supporting_text='stoic trading psychology',
+    )
     image_url = data.get('image_url')
 
     if not tweet:

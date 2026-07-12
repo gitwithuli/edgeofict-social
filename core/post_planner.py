@@ -6,6 +6,7 @@ import random
 import requests
 
 from .models import Quote, Post, PostStatus, get_session, init_db
+from .hashtag_selector import format_quote_caption, sanitize_caption_for_platform
 
 UTC = timezone.utc
 
@@ -17,36 +18,24 @@ Rules:
 1. Keep the post under 280 characters total (CRITICAL)
 2. The quote should be the focus
 3. Add a brief tie-in to EdgeOfICT's value (tracking trading edges)
-4. End every quote post with exactly these hashtags: #ICT #SMC #NQ #ES #Trading
-5. Keep it professional but approachable
-6. No emojis in the quote itself, but 1-2 subtle emojis OK elsewhere
+4. Use zero or one highly relevant contextual hashtag for X
+5. Never append a fixed hashtag bundle
+6. Do not use generic hashtags such as #Trading, #SMC, #ICT, #NQ, or #ES
+7. If no hashtag adds meaningful context, use no hashtag
+8. Keep it professional but approachable
+9. No emojis in the quote itself, but 1-2 subtle emojis OK elsewhere
 
 Format template:
 "[Quote]"
 
 [Brief tie-in to edge tracking - 1 short sentence]
 
-#ICT #SMC #NQ #ES #Trading
+[Optional single contextual hashtag]
 
 Respond with just the formatted post text, nothing else."""
 
-DEFAULT_QUOTE_TIE_IN = "Track your edge."
-DEFAULT_QUOTE_HASHTAGS = "#ICT #SMC #NQ #ES #Trading"
-
-
-def build_quote_post_text(content: str, hashtags: str = DEFAULT_QUOTE_HASHTAGS) -> str:
-    template = f'"{content}"\n\n{DEFAULT_QUOTE_TIE_IN}\n\n{hashtags}'
-    if len(template) <= 280:
-        return template
-
-    overhead = len(f'""\n\n{DEFAULT_QUOTE_TIE_IN}\n\n{hashtags}')
-    max_quote_len = max(0, 280 - overhead - 3)
-    truncated = content[:max_quote_len].rstrip()
-    if truncated:
-        truncated = f"{truncated}..."
-    else:
-        truncated = "..."
-    return f'"{truncated}"\n\n{DEFAULT_QUOTE_TIE_IN}\n\n{hashtags}'
+def build_quote_post_text(content: str, platform: str = "x", supporting_text: str = "") -> str:
+    return format_quote_caption(platform, content, supporting_text=supporting_text)
 
 
 class PostPlanner:
@@ -60,13 +49,16 @@ class PostPlanner:
         if use_ai and self.api_key:
             try:
                 candidate = self._format_quote_with_api(quote)
-                if len(candidate) <= 280 and DEFAULT_QUOTE_HASHTAGS in candidate:
-                    return candidate
+                return sanitize_caption_for_platform(
+                    "x",
+                    candidate,
+                    source_text=quote.content,
+                    supporting_text=quote.topic or "",
+                )
             except Exception:
                 pass
 
-        hashtags = self._get_hashtags_for_topic(quote.topic)
-        return build_quote_post_text(quote.content, hashtags=hashtags)
+        return build_quote_post_text(quote.content, supporting_text=quote.topic or "")
 
     def _format_quote_with_api(self, quote: Quote) -> str:
         response = requests.post(
@@ -101,9 +93,6 @@ class PostPlanner:
             raise ValueError("Anthropic returned an empty response")
 
         return text
-
-    def _get_hashtags_for_topic(self, topic: str) -> str:
-        return DEFAULT_QUOTE_HASHTAGS
 
     def get_next_quote(self, min_score: float = 7.0, exclude_source: Optional[str] = None) -> Optional[Quote]:
         query = self.session.query(Quote).filter(
