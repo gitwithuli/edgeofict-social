@@ -24,6 +24,7 @@ UTC = timezone.utc
 DEFAULT_STOIC_TASK_KEY = "daily_stoic"
 DEFAULT_QUOTE_TASK_KEY = "daily_quote"
 DEFAULT_QUOTE_RECYCLE_DAYS = 90
+LEGACY_AUTO_POST_ENV = "LEGACY_AUTO_POST_ENABLED"
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +34,23 @@ class AutomationResult:
     message: str
     post_id: int | None = None
     url: str | None = None
+
+
+def legacy_auto_post_enabled() -> bool:
+    """Keep the retired unattended publishers off unless deliberately restored."""
+    return os.getenv(LEGACY_AUTO_POST_ENV, "false").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def auto_post_pause_result(*, dry_run: bool) -> AutomationResult | None:
+    if dry_run or legacy_auto_post_enabled():
+        return None
+    return AutomationResult(
+        status="skipped",
+        message=(
+            "Unattended social publishing is paused. "
+            "Review and publish manually from the owner dashboard."
+        ),
+    )
 
 
 def get_automation_timezone() -> ZoneInfo:
@@ -327,6 +345,10 @@ def run_daily_stoic_publish(
     dry_run: bool = False,
     force: bool = False,
 ) -> AutomationResult:
+    paused = auto_post_pause_result(dry_run=dry_run)
+    if paused:
+        return paused
+
     init_db()
     db_session = get_session()
 
@@ -462,6 +484,10 @@ def run_daily_quote_publish(
     dry_run: bool = False,
     force: bool = False,
 ) -> AutomationResult:
+    paused = auto_post_pause_result(dry_run=dry_run)
+    if paused:
+        return paused
+
     init_db()
     db_session = get_session()
 

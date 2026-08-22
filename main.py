@@ -252,7 +252,7 @@ def auto_quote(run_hour: int | None, dry: bool, force: bool):
 @cli.command("queue-status")
 @click.option("--json-output", "json_output", is_flag=True, help="Print machine-readable JSON")
 def queue_status(json_output: bool):
-    """Report how many ICT quote posts are ready for upcoming autoposts."""
+    """Report how many ICT quote posts are available for owner review."""
     init_db()
     session = get_session()
     try:

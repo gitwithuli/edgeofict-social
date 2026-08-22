@@ -59,24 +59,15 @@ python -c "from werkzeug.security import generate_password_hash; print(generate_
 
 Use the output as `ADMIN_PASSWORD_HASH`.
 
-## Automatic daily ICT quote posting
+## Automatic social publishing is paused
 
-Do not rely on an in-process scheduler inside the Render free web service. It sleeps when idle.
+The previous unattended publisher has been retired while the manual content workflow is established.
 
-Use the included GitHub Actions workflow instead:
+- `.github/workflows/daily-stoic.yml` no longer has a schedule
+- Its manual dispatch reports queue counts and cannot publish
+- `LEGACY_AUTO_POST_ENABLED=false` is the safe default for all deployments
+- Manual owner-dashboard publishing and the explicit `main.py post` command remain available
 
-- File: `.github/workflows/daily-stoic.yml`
-- Schedule: hourly
-- Guard: only runs when local hour matches `AUTO_QUOTE_HOUR`
-- Default timezone: `America/New_York`
-- Default hour: `19`
-
-Add these GitHub repository secrets:
+The manual queue report requires this GitHub repository secret:
 
 - `DATABASE_URL`
-- `ANTHROPIC_API_KEY`
-- `TWITTER_API_KEY`
-- `TWITTER_API_SECRET`
-- `TWITTER_ACCESS_TOKEN`
-- `TWITTER_ACCESS_SECRET`
-- `TWITTER_BEARER_TOKEN`

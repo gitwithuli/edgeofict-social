@@ -17,6 +17,7 @@ def automation_db(monkeypatch):
     database_url = f"sqlite:///{db_path}"
     monkeypatch.setenv("DATABASE_URL", database_url)
     monkeypatch.setenv("AUTO_STOIC_TIMEZONE", "UTC")
+    monkeypatch.setenv("LEGACY_AUTO_POST_ENABLED", "true")
     for key in (
         "CLOUDINARY_CLOUD_NAME",
         "CLOUDINARY_API_KEY",
@@ -34,6 +35,18 @@ def automation_db(monkeypatch):
         yield engine
     finally:
         os.unlink(db_path)
+
+
+def test_unattended_publishers_are_paused_by_default(monkeypatch):
+    monkeypatch.delenv("LEGACY_AUTO_POST_ENABLED", raising=False)
+
+    stoic_result = automation.run_daily_stoic_publish()
+    quote_result = automation.run_daily_quote_publish()
+
+    assert stoic_result.status == "skipped"
+    assert quote_result.status == "skipped"
+    assert "paused" in stoic_result.message
+    assert "paused" in quote_result.message
 
 
 def test_run_daily_stoic_publish_posts_once(automation_db, monkeypatch):

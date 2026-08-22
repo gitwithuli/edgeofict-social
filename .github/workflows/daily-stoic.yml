@@ -1,40 +1,13 @@
-name: Daily ICT Quote Autopost
+name: Manual ICT Quote Queue Report
 
 on:
-  schedule:
-    - cron: "7 * * * *"
   workflow_dispatch:
-    inputs:
-      force_publish:
-        description: "Ignore the hour gate and run now"
-        required: true
-        default: true
-        type: boolean
-      report_only:
-        description: "Print quote queue counts without posting"
-        required: true
-        default: false
-        type: boolean
 
 jobs:
-  daily-ict-quote:
+  ict-quote-queue-report:
     runs-on: ubuntu-latest
     env:
-      AUTO_STOIC_TIMEZONE: America/New_York
-      AUTO_QUOTE_HOUR: "19"
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-      TWITTER_API_KEY: ${{ secrets.TWITTER_API_KEY }}
-      TWITTER_API_SECRET: ${{ secrets.TWITTER_API_SECRET }}
-      TWITTER_ACCESS_TOKEN: ${{ secrets.TWITTER_ACCESS_TOKEN }}
-      TWITTER_ACCESS_SECRET: ${{ secrets.TWITTER_ACCESS_SECRET }}
-      TWITTER_BEARER_TOKEN: ${{ secrets.TWITTER_BEARER_TOKEN }}
-      FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
-      FACEBOOK_PAGE_TOKEN: ${{ secrets.FACEBOOK_PAGE_TOKEN }}
-      INSTAGRAM_ACCOUNT_ID: ${{ secrets.INSTAGRAM_ACCOUNT_ID }}
-      CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
-      CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
-      CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -48,14 +21,4 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: Report ICT quote queue
-        if: github.event_name == 'workflow_dispatch' && inputs.report_only == true
         run: python main.py queue-status --json-output
-
-      - name: Run ICT quote publisher
-        if: github.event_name != 'workflow_dispatch' || inputs.report_only != true
-        run: |
-          FORCE_FLAG=""
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ] && [ "${{ inputs.force_publish }}" = "true" ]; then
-            FORCE_FLAG="--force"
-          fi
-          python main.py auto-quote --run-hour "${AUTO_QUOTE_HOUR}" ${FORCE_FLAG}

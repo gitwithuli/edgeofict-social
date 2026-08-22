@@ -155,7 +155,7 @@ def test_dashboard_available_pool_excludes_used_quotes(app_client):
     )
 
     assert response.status_code == 200
-    assert b"1 ready for auto-posting" in response.data
+    assert b"1 ready for owner review" in response.data
     assert b"Available Quote Pool" in response.data
     assert b"Used / Archived Quotes" in response.data
     assert b"Archived" in response.data

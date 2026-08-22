@@ -70,25 +70,18 @@ python main.py post --next            # Actually post
 - Use external Postgres in production via `DATABASE_URL`; local SQLite is only a fallback for development
 - See `DEPLOYMENT.md` for the free-tier hosting path
 
-## Daily ICT Quote Autopost
+## Automatic Publishing Is Paused
 
-The repo includes a scheduled GitHub Actions workflow at `.github/workflows/daily-stoic.yml`.
+The old unattended quote and Stoic publishers are disabled while the manual content process is refined.
 
-- It runs hourly
-- It only publishes when the local hour matches `AUTO_QUOTE_HOUR`
-- Default timezone is `America/New_York`
-- Default publish hour is `19`
-- It uses the `main.py auto-quote` command and records a daily run in the database to avoid duplicates
+- `.github/workflows/daily-stoic.yml` has no schedule and only reports queue counts when manually dispatched
+- `LEGACY_AUTO_POST_ENABLED` defaults to `false`, so old automation entry points skip publishing
+- Existing drafts, approvals, database records, and manual owner-dashboard publishing remain available
+- The explicit `main.py post` command remains available for deliberate owner-controlled publishing
 
-Required GitHub Actions secrets:
+The manual queue report only requires this GitHub Actions secret:
 
 - `DATABASE_URL`
-- `ANTHROPIC_API_KEY`
-- `TWITTER_API_KEY`
-- `TWITTER_API_SECRET`
-- `TWITTER_ACCESS_TOKEN`
-- `TWITTER_ACCESS_SECRET`
-- `TWITTER_BEARER_TOKEN`
 
 ## Commands
 

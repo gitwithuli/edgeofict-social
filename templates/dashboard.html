@@ -39,7 +39,7 @@
         <article class="panel overview-card">
             <span class="label">Quotes In Library</span>
             <strong>{{ stats.quotes_total }}</strong>
-            <span class="overview-sub">{{ stats.quotes_available }} ready for auto-posting</span>
+            <span class="overview-sub">{{ stats.quotes_available }} ready for owner review</span>
         </article>
 
         <article class="panel overview-card">
@@ -160,7 +160,7 @@
                     <input type="search" id="quote-search" placeholder="Search available quotes, sources, or topics">
                 </label>
             </div>
-            <div class="section-meta list-meta">Approved, unused, and not archived. These are eligible for auto-posting.</div>
+            <div class="section-meta list-meta">Approved, unused, and not archived. These remain available for deliberate manual publishing.</div>
 
             {% if available_quotes %}
             <div class="library-list" id="quote-library-list">
